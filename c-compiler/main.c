@@ -40,20 +40,16 @@ static const char *token_kind_name(TokenKind k) {
 }
 
 int main(int argc, char **argv) {
-    int dump_tokens = 0;
+    int dump_tokens = 0, emit_llvm = 0, emit_qasm = 0;
     const char *path = NULL;
-
-    if (argc >= 2 && strcmp(argv[1], "--tokens") == 0) {
-        dump_tokens = 1;
-        if (argc < 3) {
-            fprintf(stderr, "usage: qlangc [--tokens] <source-file>\n");
-            return 1;
-        }
-        path = argv[2];
-    } else if (argc >= 2) {
-        path = argv[1];
-    } else {
-        fprintf(stderr, "usage: qlangc [--tokens] <source-file>\n");
+    for (int arg_idx = 1; arg_idx < argc; arg_idx++) {
+        if (strcmp(argv[arg_idx], "--tokens") == 0) { dump_tokens = 1; continue; }
+        if (strcmp(argv[arg_idx], "--llvm") == 0)   { emit_llvm = 1;   continue; }
+        if (strcmp(argv[arg_idx], "--qasm") == 0)   { emit_qasm = 1;   continue; }
+        path = argv[arg_idx];
+    }
+    if (!path) {
+        fprintf(stderr, "usage: qlangc [--tokens] [--llvm] [--qasm] <source-file>\n");
         return 1;
     }
     FILE *f = fopen(path, "rb");
@@ -134,10 +130,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    backend_classical_emit(ir);
-    backend_quantum_emit_stub(ir);
+    if (emit_llvm) {
+        backend_classical_emit_llvm(ir);
+    } else if (emit_qasm) {
+        backend_quantum_emit_qasm(ir);
+    } else {
+        backend_classical_emit(ir);
+        backend_quantum_emit_stub(ir);
+        printf("Compiled %s\n", path);
+    }
     ir_free(ir);
     free(buffer);
-    printf("Compiled %s\n", path);
     return 0;
 }

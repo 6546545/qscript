@@ -1,6 +1,6 @@
 # QScript C prototype (qlangc)
 
-Minimal C implementation that reads a QScript source file and runs the lexer.
+C implementation of the QScript compiler: lexer, parser, typecheck, IR, and classical/quantum backends. Feature parity with the Rust compiler for the supported subset.
 
 ## Build
 
@@ -23,7 +23,9 @@ make
 
 **Windows or elsewhere (gcc directly):**
 ```bash
-gcc -std=c11 -Wall -o qlangc.exe main.c lexer.c
+gcc -std=c11 -Wall -o qlangc.exe main.c lexer.c ast.c parser.c typecheck.c ir.c backend.c
 ```
+
+**Options:** `--tokens` (dump tokens), `--llvm` (emit LLVM IR; pipe to clang to get an executable), `--qasm` (emit OpenQASM 2.0 for quantum programs).
 
 You need a C compiler on PATH (e.g. [MinGW-w64](https://www.mingw-w64.org/) or [MSYS2](https://www.msys2.org/) for `gcc`, or Visual Studio for `cl`).

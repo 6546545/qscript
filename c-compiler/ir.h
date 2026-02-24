@@ -4,8 +4,20 @@
 #include "ast.h"
 #include <stddef.h>
 
+typedef enum { IR_VAL_STR, IR_VAL_INT } IrValueKind;
+
+typedef struct IrValue {
+    IrValueKind kind;
+    char *value; /* owned */
+} IrValue;
+
+typedef enum { IR_NOP, IR_CALL, IR_RET } InstructionKind;
+
 typedef struct Instruction {
-    enum { IR_NOP } kind;
+    InstructionKind kind;
+    char *callee;     /* owned; for IR_CALL */
+    IrValue *args;   /* owned array; for IR_CALL */
+    size_t arg_count;
 } Instruction;
 
 typedef struct BasicBlock {
@@ -25,11 +37,7 @@ typedef struct ModuleIr {
     size_t function_count;
 } ModuleIr;
 
-/**
- * Lower AST to IR. Returns newly allocated ModuleIr (caller must ir_free).
- */
 ModuleIr *lower_to_ir(const Program *program);
-
 void ir_free(ModuleIr *module);
 
 #endif /* QSCRIPT_IR_H */
