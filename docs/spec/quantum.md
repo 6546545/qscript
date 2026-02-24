@@ -50,3 +50,20 @@ To respect the **no-cloning theorem** and general quantum safety:
 
 These rules will be encoded in the type system and enforced by the compiler frontend before IR generation.
 
+---
+
+### MVP Scope (v0.1)
+
+The **MVP** restricts quantum support to:
+
+- **Types**: `qubit`, `qreg<2>` only.
+- **Operations**: `alloc_qreg<2>()`, `h(qubit)`, `cx(qubit, qubit)`, `measure_all(qreg<2>)`, `print_bits(result)`.
+- **Blocks**: `quantum { ... }` blocks only; no quantum operations outside these blocks.
+
+### Future Work (Not in MVP)
+
+- `qreg<N>` for arbitrary N, `qarray`.
+- Additional gates: `X`, `Y`, `Z`, `CZ`, `RX`, `RY`, `RZ`, parameterized rotations.
+- Reset operations.
+- Full linearity/ownership enforcement for quantum types.
+

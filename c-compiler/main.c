@@ -8,6 +8,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include <process.h>
+#define popen _popen
+#define pclose _pclose
+#endif
+
 static const char *token_kind_name(TokenKind k) {
     switch (k) {
         case TOK_FN: return "fn";
@@ -42,14 +48,20 @@ static const char *token_kind_name(TokenKind k) {
 int main(int argc, char **argv) {
     int dump_tokens = 0, emit_llvm = 0, emit_qasm = 0;
     const char *path = NULL;
+    const char *out_path = NULL;
     for (int arg_idx = 1; arg_idx < argc; arg_idx++) {
         if (strcmp(argv[arg_idx], "--tokens") == 0) { dump_tokens = 1; continue; }
         if (strcmp(argv[arg_idx], "--llvm") == 0)   { emit_llvm = 1;   continue; }
-        if (strcmp(argv[arg_idx], "--qasm") == 0)   { emit_qasm = 1;   continue; }
+        if (strcmp(argv[arg_idx], "--qasm") == 0 || strcmp(argv[arg_idx], "--emit-qasm") == 0)
+            { emit_qasm = 1; continue; }
+        if (strcmp(argv[arg_idx], "-o") == 0 && arg_idx + 1 < argc) {
+            out_path = argv[++arg_idx];
+            continue;
+        }
         path = argv[arg_idx];
     }
     if (!path) {
-        fprintf(stderr, "usage: qlangc [--tokens] [--llvm] [--qasm] <source-file>\n");
+        fprintf(stderr, "usage: qlangc [--tokens] [--llvm] [--qasm] [-o <output>] <source-file>\n");
         return 1;
     }
     FILE *f = fopen(path, "rb");
@@ -115,7 +127,8 @@ int main(int argc, char **argv) {
     }
 
     if (typecheck(ast) != 0) {
-        fprintf(stderr, "error: type check failed\n");
+        const char *err = typecheck_get_last_error();
+        fprintf(stderr, "error: type check failed%s%s\n", err ? ": " : "", err ? err : "");
         ast_free(ast);
         free(buffer);
         return 1;
@@ -131,9 +144,64 @@ int main(int argc, char **argv) {
     }
 
     if (emit_llvm) {
-        backend_classical_emit_llvm(ir);
+        if (out_path) {
+            FILE *out = fopen(out_path, "w");
+            if (!out) {
+                fprintf(stderr, "error: cannot open output '%s'\n", out_path);
+                ir_free(ir);
+                free(buffer);
+                return 1;
+            }
+            backend_classical_emit_llvm_file(ir, out);
+            fclose(out);
+            printf("Wrote LLVM IR to %s\n", out_path);
+        } else {
+            backend_classical_emit_llvm(ir);
+        }
     } else if (emit_qasm) {
-        backend_quantum_emit_qasm(ir);
+        if (out_path) {
+            FILE *out = fopen(out_path, "w");
+            if (!out) {
+                fprintf(stderr, "error: cannot open output '%s'\n", out_path);
+                ir_free(ir);
+                free(buffer);
+                return 1;
+            }
+            backend_quantum_emit_qasm_file(ir, out);
+            fclose(out);
+            printf("Wrote OpenQASM to %s\n", out_path);
+        } else {
+            backend_quantum_emit_qasm(ir);
+        }
+    } else if (out_path) {
+        /* Compile to native binary: emit LLVM to temp, invoke clang */
+        FILE *tmp = fopen(".qlangc_tmp.ll", "w");
+        if (!tmp) {
+            fprintf(stderr, "error: cannot create temp file .qlangc_tmp.ll\n");
+            ir_free(ir);
+            free(buffer);
+            return 1;
+        }
+        backend_classical_emit_llvm_file(ir, tmp);
+        fclose(tmp);
+        {
+            char cmd[512];
+#ifdef _WIN32
+            snprintf(cmd, sizeof(cmd), "clang -x ir .qlangc_tmp.ll -o \"%s\" 2>&1", out_path);
+#else
+            snprintf(cmd, sizeof(cmd), "clang -x ir .qlangc_tmp.ll -o \"%s\" 2>&1", out_path);
+#endif
+            int r = system(cmd);
+            remove(".qlangc_tmp.ll");
+            if (r != 0) {
+                fprintf(stderr, "error: clang failed. Ensure clang is on PATH.\n");
+                fprintf(stderr, "  Alternatively: qlangc --llvm -o out.ll %s && clang -x ir out.ll -o %s\n", path, out_path);
+                ir_free(ir);
+                free(buffer);
+                return 1;
+            }
+        }
+        printf("Built %s\n", out_path);
     } else {
         backend_classical_emit(ir);
         backend_quantum_emit_stub(ir);

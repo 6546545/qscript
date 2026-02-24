@@ -1,16 +1,45 @@
 #include "ast.h"
 #include <stdlib.h>
 
-static void free_expr(Expr *e) {
-    if (e && e->value) free(e->value);
+void ast_free_expr(Expr *e) {
+    if (!e) return;
+    free(e->value);
+    if (e->kind == EXPR_INDEX && e->base) {
+        ast_free_expr(e->base);
+        ast_free_expr(e->index);
+    } else if (e->kind == EXPR_CALL && e->base) {
+        ast_free_expr(e->base);
+        if (e->args) {
+            for (size_t i = 0; i < e->arg_count; i++) ast_free_expr(&e->args[i]);
+            free(e->args);
+        }
+    }
 }
 
-static void free_statement(Statement *s) {
+void ast_free_statement(Statement *s) {
     if (!s) return;
-    free(s->callee);
-    if (s->args) {
-        for (size_t i = 0; i < s->arg_count; i++) free_expr(&s->args[i]);
-        free(s->args);
+    switch (s->kind) {
+        case STMT_CALL:
+            free(s->callee);
+            if (s->args) {
+                for (size_t i = 0; i < s->arg_count; i++) ast_free_expr(&s->args[i]);
+                free(s->args);
+            }
+            break;
+        case STMT_LET:
+            free(s->let_name);
+            free(s->let_type);
+            if (s->init) ast_free_expr(s->init);
+            break;
+        case STMT_QUANTUM_BLOCK:
+            if (s->body) {
+                for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
+                free(s->body);
+            }
+            break;
+        case STMT_EXPR:
+            if (s->init) ast_free_expr(s->init);
+            break;
     }
 }
 
@@ -20,7 +49,7 @@ void ast_free(Program *program) {
         Function *f = &program->functions[i];
         free(f->name);
         if (f->body) {
-            for (size_t j = 0; j < f->body_count; j++) free_statement(&f->body[j]);
+            for (size_t j = 0; j < f->body_count; j++) ast_free_statement(&f->body[j]);
             free(f->body);
         }
     }

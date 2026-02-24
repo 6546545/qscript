@@ -15,3 +15,5 @@ env/
 Thumbs.db
 
 # C compiler (c-compiler/ has its own .gitignore for tools/ and qlangc.exe)
+*.ll
+*.qasm

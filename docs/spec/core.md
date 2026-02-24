@@ -68,3 +68,22 @@ The reference compiler must:
 
 These semantics provide the classical foundation on which the quantum model and richer type system features will be integrated.
 
+---
+
+### MVP Scope (v0.1)
+
+The **MVP** implements only the following:
+
+- **Types**: `unit`, `i32` (and `qreg<2>` for quantum; see quantum spec).
+- **Functions**: `fn name(params) -> unit { ... }` with zero or more parameters.
+- **Statements**: `let` bindings, expression statements, `return`, `quantum { ... }` blocks.
+- **Expressions**: integer literals, string literals, variables, binary `+`, function calls, array indexing (`q[0]`).
+
+### Future Work (Not in MVP)
+
+- Advanced memory/ownership rules, region-based memory, borrow checking.
+- Complex composite types: `ptr<T>`, `ref<T>`, slices, structs.
+- Additional primitive types: `i8`, `i16`, `i64`, `u8`–`u64`, `f32`, `f64`, `bool`.
+- Pattern matching, `if`/`else` expressions, `loop`/`while`/`for`.
+- Module system, imports, exports.
+

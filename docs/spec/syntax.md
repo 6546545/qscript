@@ -89,3 +89,22 @@ Here, `quantum { ... }` introduces a quantum block where quantum operations (`al
 
 This syntax is intentionally minimal for v0.1 and will evolve as the language and tooling mature.
 
+---
+
+### MVP Scope (v0.1)
+
+The **MVP parser** supports only:
+
+- Function declarations: `fn name() -> unit { ... }` (no parameters in MVP for `main`; parameters allowed for other functions).
+- `let` bindings with optional type annotation: `let x: i32 = 42;` or `let result = measure_all(q);`
+- Expression statements: `print("...");`, `h(q[0]);`, etc.
+- `return;` (for `unit` functions).
+- `quantum { ... }` blocks.
+
+### Future Work (Not in MVP)
+
+- Pattern matching, `if`/`else` as expressions.
+- `loop`, `while`, `for`, `break`, `continue`.
+- `struct` declarations, type aliases.
+- Module metadata and imports.
+

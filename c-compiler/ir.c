@@ -58,39 +58,90 @@ ModuleIr *lower_to_ir(const Program *program) {
 
         for (size_t j = 0; j < f->body_count; j++) {
             const Statement *s = &f->body[j];
-            if (s->kind != STMT_CALL) continue;
-            if (inst_count >= inst_cap) {
-                size_t new_cap = inst_cap * 2;
-                Instruction *n = (Instruction *)realloc(insts, new_cap * sizeof(Instruction));
-                if (!n) goto fail_insts;
-                insts = n;
-                inst_cap = new_cap;
-            }
-            insts[inst_count].kind = IR_CALL;
-            insts[inst_count].callee = strdup(s->callee);
-            if (!insts[inst_count].callee) goto fail_insts;
-            insts[inst_count].arg_count = s->arg_count;
-            insts[inst_count].args = (IrValue *)malloc(s->arg_count * sizeof(IrValue));
-            if (!insts[inst_count].args && s->arg_count > 0) {
-                free(insts[inst_count].callee);
-                goto fail_insts;
-            }
-            for (size_t a = 0; a < s->arg_count; a++) {
-                if (s->args[a].kind == EXPR_STR) {
-                    insts[inst_count].args[a].kind = IR_VAL_STR;
-                    insts[inst_count].args[a].value = strdup(s->args[a].value);
-                } else {
-                    insts[inst_count].args[a].kind = IR_VAL_INT;
-                    insts[inst_count].args[a].value = strdup(s->args[a].value);
+            const Expr *call_expr = NULL;
+            if (s->kind == STMT_CALL) {
+                /* Legacy: callee and args directly on statement */
+                if (inst_count >= inst_cap) {
+                    size_t new_cap = inst_cap * 2;
+                    Instruction *n = (Instruction *)realloc(insts, new_cap * sizeof(Instruction));
+                    if (!n) goto fail_insts;
+                    insts = n;
+                    inst_cap = new_cap;
                 }
-                if (!insts[inst_count].args[a].value) {
-                    for (size_t b = 0; b < a; b++) free(insts[inst_count].args[b].value);
-                    free(insts[inst_count].args);
+                insts[inst_count].kind = IR_CALL;
+                insts[inst_count].callee = strdup(s->callee);
+                if (!insts[inst_count].callee) goto fail_insts;
+                insts[inst_count].arg_count = s->arg_count;
+                insts[inst_count].args = (IrValue *)malloc(s->arg_count * sizeof(IrValue));
+                if (!insts[inst_count].args && s->arg_count > 0) {
                     free(insts[inst_count].callee);
                     goto fail_insts;
                 }
+                for (size_t a = 0; a < s->arg_count; a++) {
+                    if (s->args[a].kind == EXPR_STR) {
+                        insts[inst_count].args[a].kind = IR_VAL_STR;
+                        insts[inst_count].args[a].value = strdup(s->args[a].value);
+                    } else {
+                        insts[inst_count].args[a].kind = IR_VAL_INT;
+                        insts[inst_count].args[a].value = strdup(s->args[a].value ? s->args[a].value : "0");
+                    }
+                    if (!insts[inst_count].args[a].value) {
+                        for (size_t b = 0; b < a; b++) free(insts[inst_count].args[b].value);
+                        free(insts[inst_count].args);
+                        free(insts[inst_count].callee);
+                        goto fail_insts;
+                    }
+                }
+                inst_count++;
+                continue;
             }
-            inst_count++;
+            if (s->kind == STMT_EXPR && s->init && s->init->kind == EXPR_CALL) {
+                call_expr = s->init;
+            }
+            if (!call_expr) continue;  /* skip let, quantum block, other exprs for classical IR */
+            {
+                const char *callee = call_expr->base && call_expr->base->value ? call_expr->base->value : "?";
+                size_t ac = call_expr->arg_count;
+                if (inst_count >= inst_cap) {
+                    size_t new_cap = inst_cap * 2;
+                    Instruction *n = (Instruction *)realloc(insts, new_cap * sizeof(Instruction));
+                    if (!n) goto fail_insts;
+                    insts = n;
+                    inst_cap = new_cap;
+                }
+                insts[inst_count].kind = IR_CALL;
+                insts[inst_count].callee = strdup(callee);
+                if (!insts[inst_count].callee) goto fail_insts;
+                insts[inst_count].arg_count = ac;
+                insts[inst_count].args = (IrValue *)malloc(ac * sizeof(IrValue));
+                if (!insts[inst_count].args && ac > 0) {
+                    free(insts[inst_count].callee);
+                    goto fail_insts;
+                }
+                for (size_t a = 0; a < ac; a++) {
+                    const Expr *arg = &call_expr->args[a];
+                    if (arg->kind == EXPR_STR && arg->value) {
+                        insts[inst_count].args[a].kind = IR_VAL_STR;
+                        insts[inst_count].args[a].value = strdup(arg->value);
+                    } else if (arg->kind == EXPR_IDENT && arg->value) {
+                        insts[inst_count].args[a].kind = IR_VAL_INT;  /* var ref as placeholder */
+                        insts[inst_count].args[a].value = strdup(arg->value);
+                    } else if (arg->kind == EXPR_INDEX && arg->base && arg->index) {
+                        insts[inst_count].args[a].kind = IR_VAL_INT;
+                        insts[inst_count].args[a].value = arg->index->value ? strdup(arg->index->value) : strdup("0");
+                    } else {
+                        insts[inst_count].args[a].kind = IR_VAL_INT;
+                        insts[inst_count].args[a].value = strdup(arg->value ? arg->value : "0");
+                    }
+                    if (!insts[inst_count].args[a].value) {
+                        for (size_t b = 0; b < a; b++) free(insts[inst_count].args[b].value);
+                        free(insts[inst_count].args);
+                        free(insts[inst_count].callee);
+                        goto fail_insts;
+                    }
+                }
+                inst_count++;
+            }
         }
 
         if (inst_count >= inst_cap) {

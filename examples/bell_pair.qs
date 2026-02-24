@@ -1,3 +1,7 @@
+fn main() -> unit {
+    bell_pair();
+}
+
 fn bell_pair() -> unit {
     quantum {
         let q: qreg<2> = alloc_qreg<2>();
