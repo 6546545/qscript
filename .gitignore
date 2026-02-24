@@ -1,0 +1,17 @@
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# C compiler (c-compiler/ has its own .gitignore for tools/ and qlangc.exe)

@@ -1,4 +1,4 @@
-use crate::ast::{Function, Program};
+use crate::ast::{Expr, Function, Program, Statement};
 
 #[derive(Debug)]
 pub struct ModuleIr {
@@ -18,25 +18,53 @@ pub struct BasicBlock {
 }
 
 #[derive(Debug)]
+pub enum IrValue {
+    Str(String),
+    Int(String),
+}
+
+#[derive(Debug)]
 pub enum Instruction {
     Nop,
-    // Placeholders for future classical and quantum instructions.
-    // E.g., Add, Sub, Call, QuantumAlloc, QuantumGate, Measure, etc.
+    Call { callee: String, args: Vec<IrValue> },
+    Ret,
 }
 
 pub fn lower_to_ir(program: &Program) -> ModuleIr {
     let functions = program
         .functions
         .iter()
-        .map(|f| FunctionIr {
-            name: f.name.clone(),
-            blocks: vec![BasicBlock {
-                name: "entry".to_string(),
-                instructions: vec![Instruction::Nop],
-            }],
+        .map(|f| {
+            let mut instructions = Vec::new();
+            for stmt in &f.body {
+                if let Statement::Call { callee, args } = stmt {
+                    let ir_args: Vec<IrValue> = args
+                        .iter()
+                        .map(|e| match e {
+                            Expr::StringLit(s) => IrValue::Str(s.clone()),
+                            Expr::IntLit(s) => IrValue::Int(s.clone()),
+                            Expr::Identifier(s) => IrValue::Int(s.clone()), // placeholder
+                        })
+                        .collect();
+                    instructions.push(Instruction::Call {
+                        callee: callee.clone(),
+                        args: ir_args,
+                    });
+                }
+            }
+            instructions.push(Instruction::Ret);
+            if instructions.len() == 1 {
+                instructions.insert(0, Instruction::Nop);
+            }
+            FunctionIr {
+                name: f.name.clone(),
+                blocks: vec![BasicBlock {
+                    name: "entry".to_string(),
+                    instructions,
+                }],
+            }
         })
         .collect();
 
     ModuleIr { functions }
 }
-

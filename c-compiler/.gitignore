@@ -1,0 +1,7 @@
+# Portable MinGW (from download-mingw.ps1)
+tools/
+
+# Build output
+qlangc.exe
+qlangc
+*.o

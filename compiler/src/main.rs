@@ -14,6 +14,14 @@ struct Cli {
     /// Path to the source file to compile.
     #[arg()]
     input: String,
+
+    /// Emit LLVM IR to stdout (compile with: clang -x ir - -o out).
+    #[arg(long)]
+    llvm: bool,
+
+    /// Emit OpenQASM 2.0 to stdout (for quantum programs; run with Qiskit etc.).
+    #[arg(long)]
+    qasm: bool,
 }
 
 fn main() {
@@ -27,10 +35,14 @@ fn main() {
 
     let ir_module = ir::lower_to_ir(&ast);
 
-    // For now, always emit both classical and quantum IR stubs.
-    backend::classical::emit(&ir_module);
-    backend::quantum::emit_stub(&ir_module);
-
-    println!("Compiled {}", cli.input);
+    if cli.llvm {
+        backend::classical::emit_llvm(&ir_module);
+    } else if cli.qasm {
+        backend::quantum::emit_qasm(&ir_module);
+    } else {
+        backend::classical::emit(&ir_module);
+        backend::quantum::emit_stub(&ir_module);
+        println!("Compiled {}", cli.input);
+    }
 }
 

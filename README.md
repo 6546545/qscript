@@ -37,12 +37,28 @@ This repository is in an **early experimental phase**. The initial goal is to sh
 
 ### CLI Usage
 
-Once Rust and Cargo are installed, you can run the prototype compiler on an example:
+Once Rust and Cargo are installed, you can run the prototype compiler:
 
 ```bash
 cd compiler
 cargo run -- ../examples/hello_world.qs
 ```
 
-The current implementation parses and type-checks a very small subset of the language and emits **pseudo-IR** for both classical and quantum backends.
+By default this parses and type-checks the source and prints **pseudo-IR** for both classical and quantum backends.
+
+**Emit real LLVM IR** (then compile to an executable with [Clang](https://clang.llvm.org/)):
+
+```bash
+cargo run -- ../examples/hello_world.qs --llvm | clang -x ir - -o hello
+./hello
+```
+
+**Emit OpenQASM 2.0** for quantum programs (e.g. Bell pair), then run with [Qiskit](https://qiskit.org/) or another OpenQASM-capable tool:
+
+```bash
+cargo run -- ../examples/bell_pair.qs --qasm > bell_pair.qasm
+# Example with Qiskit: python -c "from qiskit import QuantumCircuit; qc = QuantumCircuit.from_qasm_file('bell_pair.qasm'); print(qc)"
+```
+
+The implementation parses and type-checks a small subset of the language; the classical backend can emit valid LLVM IR and the quantum backend can emit runnable OpenQASM for the Bell pair example.
 
