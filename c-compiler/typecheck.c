@@ -93,9 +93,9 @@ static int check_expr(const Expr *e) {
     return 0;
 }
 
-static int check_statement(const Statement *s);
+static int check_statement(const Statement *s, int in_loop, const char *func_return_type);
 
-static int check_statement(const Statement *s) {
+static int check_statement(const Statement *s, int in_loop, const char *func_return_type) {
     if (!s) return 0;
     switch (s->kind) {
         case STMT_CALL:
@@ -114,21 +114,70 @@ static int check_statement(const Statement *s) {
             if (s->let_name) scope_push(s->let_name, s->let_type);
             if (s->init && check_expr(s->init) != 0) return -1;
             return 0;
+        case STMT_ASSIGN:
+            if (s->let_name && !scope_lookup(s->let_name)) {
+                (void)snprintf(typecheck_error, sizeof(typecheck_error),
+                    "cannot assign to undefined variable '%s'", s->let_name);
+                return -1;
+            }
+            if (s->init && check_expr(s->init) != 0) return -1;
+            return 0;
         case STMT_QUANTUM_BLOCK:
             for (size_t i = 0; i < s->body_count; i++) {
-                if (check_statement(&s->body[i]) != 0) return -1;
+                if (check_statement(&s->body[i], in_loop, func_return_type) != 0) return -1;
             }
             return 0;
         case STMT_IF:
             if (s->init && check_expr(s->init) != 0) return -1;
             for (size_t i = 0; i < s->body_count; i++) {
-                if (check_statement(&s->body[i]) != 0) return -1;
+                if (check_statement(&s->body[i], in_loop, func_return_type) != 0) return -1;
             }
             for (size_t i = 0; i < s->else_body_count; i++) {
-                if (check_statement(&s->else_body[i]) != 0) return -1;
+                if (check_statement(&s->else_body[i], in_loop, func_return_type) != 0) return -1;
+            }
+            return 0;
+        case STMT_LOOP:
+            for (size_t i = 0; i < s->body_count; i++) {
+                if (check_statement(&s->body[i], 1, func_return_type) != 0) return -1;
+            }
+            return 0;
+        case STMT_FOR:
+            if (s->for_init && check_statement(s->for_init, in_loop, func_return_type) != 0) return -1;
+            if (s->init && check_expr(s->init) != 0) return -1;
+            if (s->for_step && check_statement(s->for_step, in_loop, func_return_type) != 0) return -1;
+            for (size_t i = 0; i < s->body_count; i++) {
+                if (check_statement(&s->body[i], 1, func_return_type) != 0) return -1;
+            }
+            return 0;
+        case STMT_WHILE:
+            if (s->init && check_expr(s->init) != 0) return -1;
+            for (size_t i = 0; i < s->body_count; i++) {
+                if (check_statement(&s->body[i], 1, func_return_type) != 0) return -1;
+            }
+            return 0;
+        case STMT_BREAK:
+            if (!in_loop) {
+                (void)snprintf(typecheck_error, sizeof(typecheck_error), "break outside loop");
+                return -1;
+            }
+            return 0;
+        case STMT_CONTINUE:
+            if (!in_loop) {
+                (void)snprintf(typecheck_error, sizeof(typecheck_error), "continue outside loop");
+                return -1;
             }
             return 0;
         case STMT_EXPR:
+            if (s->init && check_expr(s->init) != 0) return -1;
+            return 0;
+        case STMT_RETURN:
+            if (func_return_type && strcmp(func_return_type, "i32") == 0) {
+                if (!s->init) {
+                    (void)snprintf(typecheck_error, sizeof(typecheck_error),
+                        "function returns i32, return statement must have a value");
+                    return -1;
+                }
+            }
             if (s->init && check_expr(s->init) != 0) return -1;
             return 0;
     }
@@ -171,7 +220,7 @@ int typecheck(const Program *program) {
             scope_push(f->params[j].name, f->params[j].type);
         }
         for (size_t j = 0; j < f->body_count; j++) {
-            if (check_statement(&f->body[j]) != 0) return -1;
+            if (check_statement(&f->body[j], 0, f->return_type) != 0) return -1;
         }
     }
     scope_clear();

@@ -34,6 +34,10 @@ void ast_free_statement(Statement *s) {
             free(s->let_type);
             if (s->init) ast_free_expr(s->init);
             break;
+        case STMT_ASSIGN:
+            free(s->let_name);
+            if (s->init) ast_free_expr(s->init);
+            break;
         case STMT_QUANTUM_BLOCK:
             if (s->body) {
                 for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
@@ -53,6 +57,35 @@ void ast_free_statement(Statement *s) {
                 for (size_t i = 0; i < s->else_body_count; i++) ast_free_statement(&s->else_body[i]);
                 free(s->else_body);
             }
+            break;
+        case STMT_RETURN:
+            if (s->init) ast_free_expr(s->init);
+            break;
+        case STMT_LOOP:
+            if (s->body) {
+                for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
+                free(s->body);
+            }
+            break;
+        case STMT_FOR:
+            if (s->for_init) { ast_free_statement(s->for_init); free(s->for_init); }
+            if (s->for_step) { ast_free_statement(s->for_step); free(s->for_step); }
+            if (s->init) ast_free_expr(s->init);
+            if (s->body) {
+                for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
+                free(s->body);
+            }
+            break;
+        case STMT_WHILE:
+            if (s->init) ast_free_expr(s->init);
+            if (s->body) {
+                for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
+                free(s->body);
+            }
+            break;
+        case STMT_BREAK:
+            break;
+        case STMT_CONTINUE:
             break;
     }
 }

@@ -97,15 +97,19 @@ The **MVP parser** supports only:
 
 - Function declarations: `fn name(param: type, ...) -> return_type { ... }` (parameters allowed; `main()` must have no parameters).
 - `if expr { ... } else { ... }` conditionals with comparison expressions (`<`, `>`, `==`, `!=`, `<=`, `>=`).
-- `let` bindings with optional type annotation: `let x: i32 = 42;` or `let result = measure_all(q);`
+- `let` bindings with optional type annotation: `let x: i32 = 42;`, `let y = x + 1;`, or `let result = measure_all(q);`
+- `return;` or `return expr;` for early exit.
+- `loop { ... }`, `while (cond) { ... }`, `for (init; cond; step) { ... }` with `break;` and `continue;`.
+- Mutable assignment: `x = expr;` (variable must be in scope).
 - Expression statements: `print("...");`, `h(q[0]);`, etc.
 - `return;` (for `unit` functions).
 - `quantum { ... }` blocks.
 
 ### Future Work (Not in MVP)
 
+- Swarms integration and support (deeper orchestration with compiler/tooling).
 - Pattern matching, `if`/`else` as expressions.
-- `loop`, `while`, `for`, `break`, `continue`.
+- (Control flow complete.)
 - `struct` declarations, type aliases.
 - Module metadata and imports.
 

@@ -75,6 +75,44 @@ fn main() -> unit {
 
 ---
 
+## Arithmetic and Return
+
+```qs
+fn main() -> unit {
+    let x: i32 = 1 + 2;
+    if x < 5 {
+        print("ok");
+        return;
+    }
+    print("fallthrough");
+}
+```
+
+- **`let x = 1 + 2`**: Arithmetic operators `+`, `-`, `*`, `/`, `%` in let initializers.
+- **`return;`**: Early exit from a function. Skips remaining statements.
+
+---
+
+## Function Return Values
+
+```qs
+fn add(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+fn main() -> unit {
+    let x: i32 = add(1, 2);
+    if x < 5 {
+        print("x is less than 5");
+    }
+}
+```
+
+- **`-> i32`**: Function returns an integer. Must use `return expr;` (not `return;`).
+- **`let x = add(1, 2)`**: Call expressions can be used in let initializers when the function returns `i32`.
+
+---
+
 ## Conditionals (if/else)
 
 ```qs
@@ -88,7 +126,42 @@ fn main() -> unit {
 ```
 
 - **`if expr { ... } else { ... }`**: Conditional with comparison. Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`.
-- **Note**: MVP uses literal comparisons; variables in conditions require let-binding support in the classical IR.
+- Variables from `let` bindings can be used in conditions and function calls.
+
+---
+
+## Loop and Break
+
+```qs
+fn main() -> unit {
+    loop {
+        print("Loop iteration");
+        break;
+    }
+    print("Done");
+}
+```
+
+- **`loop { ... }`**: Infinite loop. Body executes until `break` or `return`.
+- **`break;`**: Exits the innermost loop. Must be inside a `loop` block.
+
+---
+
+## Mutable Assignment
+
+```qs
+fn main() -> unit {
+    let i: i32 = 0;
+    loop {
+        if i >= 3 { break; }
+        print("iteration");
+        i = i + 1;
+    }
+    print("done");
+}
+```
+
+- **`x = expr;`**: Assigns a new value to an existing variable. The variable must be in scope (from `let` or a function parameter).
 
 ---
 
@@ -97,7 +170,11 @@ fn main() -> unit {
 | Construct | Example |
 |-----------|---------|
 | Function | `fn name() -> unit { ... }` or `fn name(x: i32, y: i32) -> unit { ... }` |
+| Let + arithmetic | `let x = 1 + 2;` |
 | Conditional | `if a < b { ... } else { ... }` |
+| Loop | `loop { ... break; }` |
+| Assignment | `x = expr;` |
+| Return | `return;` or `return expr;` (for `-> i32`) |
 | Let binding | `let x = expr;` or `let x: type = expr;` |
 | Quantum block | `quantum { ... }` |
 | Call | `print("hi");` |
@@ -108,7 +185,8 @@ fn main() -> unit {
 
 ## What's Not in the MVP
 
-- Control flow: `loop`, `for`, `while`
+- Swarms integration and support (deeper orchestration with compiler/tooling).
+- (Control flow: `while`, `for`, `continue` implemented.)
 - Generics and complex types
 - Additional quantum gates beyond `h` and `cx`
 - Full linearity/ownership for quantum types

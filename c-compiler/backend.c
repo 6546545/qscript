@@ -36,6 +36,61 @@ static const char *llvm_icmp_for(const char *op) {
     return "slt";
 }
 
+static int is_param(const FunctionIr *fir, const char *name) {
+    for (size_t i = 0; i < fir->param_count; i++) {
+        if (fir->params[i].name && strcmp(fir->params[i].name, name) == 0) return 1;
+    }
+    return 0;
+}
+
+static int is_local(const FunctionIr *fir, const char *name) {
+    for (size_t i = 0; i < fir->local_count; i++) {
+        if (fir->locals[i] && strcmp(fir->locals[i], name) == 0) return 1;
+    }
+    return 0;
+}
+
+static int is_literal(const char *val) {
+    if (!val || !*val) return 0;
+    if (*val == '-' && val[1]) val++;
+    for (; *val; val++) {
+        if (*val < '0' || *val > '9') return 0;
+    }
+    return 1;
+}
+
+/* Emit i32 operand: literal, param (%name), local (emit load), or SSA (%binop.N). Writes to buf. */
+static void emit_i32_operand(FILE *out, const FunctionIr *fir, const IrValue *v,
+                             char *buf, size_t buf_size, size_t *load_counter) {
+    const char *val = v->value ? v->value : "0";
+    if (v->kind == IR_VAL_STR) {
+        snprintf(buf, buf_size, "0");
+        return;
+    }
+    if (v->kind == IR_VAL_SSA && val) {
+        snprintf(buf, buf_size, "%%%s", val);
+        return;
+    }
+    if (is_literal(val)) {
+        snprintf(buf, buf_size, "%s", val);
+        return;
+    }
+    if (is_param(fir, val)) {
+        /* Params are stored in %name.addr; load from there */
+        fprintf(out, "  %%load.%lu = load i32, i32* %%%s.addr\n", (unsigned long)(*load_counter), val);
+        snprintf(buf, buf_size, "%%load.%lu", (unsigned long)(*load_counter));
+        (*load_counter)++;
+        return;
+    }
+    if (is_local(fir, val)) {
+        fprintf(out, "  %%load.%lu = load i32, i32* %%%s\n", (unsigned long)(*load_counter), val);
+        snprintf(buf, buf_size, "%%load.%lu", (unsigned long)(*load_counter));
+        (*load_counter)++;
+        return;
+    }
+    snprintf(buf, buf_size, "0");
+}
+
 void backend_classical_emit(const ModuleIr *module) {
     printf("== QScript Classical Backend (pseudo-LLVM IR) ==\n");
     for (size_t i = 0; i < module->function_count; i++) {
@@ -56,6 +111,9 @@ void backend_classical_emit(const ModuleIr *module) {
                 else if (inst->kind == IR_RET) printf("    ; ret\n");
                 else if (inst->kind == IR_COND_BR) printf("    ; cond_br %s -> %s, %s\n", inst->callee, inst->block_target, inst->block_target_else);
                 else if (inst->kind == IR_BR) printf("    ; br %s\n", inst->block_target);
+                else if (inst->kind == IR_ALLOCA) printf("    ; alloca %s\n", inst->callee);
+                else if (inst->kind == IR_STORE) printf("    ; store %s\n", inst->callee);
+                else if (inst->kind == IR_ADD) printf("    ; add %s\n", inst->callee);
             }
         }
         printf("}\n");
@@ -109,7 +167,8 @@ static void emit_llvm_impl(const ModuleIr *module) {
     size_t str_idx = 0;
     for (size_t i = 0; i < module->function_count; i++) {
         const FunctionIr *fir = &module->functions[i];
-        const char *ret_ty = (strcmp(fir->name, "main") == 0) ? "i32" : "void";
+        /* main() emits i32 for C linking; others use declared return type */
+        const char *ret_ty = (strcmp(fir->name, "main") == 0) ? "i32" : llvm_type_for(fir->return_type);
         fprintf(out, "define %s @%s(", ret_ty, fir->name);
         for (size_t p = 0; p < fir->param_count; p++) {
             if (p > 0) fprintf(out, ", ");
@@ -117,28 +176,67 @@ static void emit_llvm_impl(const ModuleIr *module) {
         }
         fprintf(out, ") {\n");
         size_t icmp_counter = 0;
+        size_t binop_counter = 0;
+        size_t load_counter = 0;
         for (size_t j = 0; j < fir->block_count; j++) {
             const BasicBlock *b = &fir->blocks[j];
             fprintf(out, "%s:\n", b->name);
+            /* Emit allocas for params (entry block only) so they can be assigned */
+            if (j == 0 && fir->param_count > 0) {
+                for (size_t p = 0; p < fir->param_count; p++) {
+                    if (fir->params[p].name)
+                        fprintf(out, "  %%%s.addr = alloca i32\n  store i32 %%%s, i32* %%%s.addr\n",
+                                fir->params[p].name, fir->params[p].name, fir->params[p].name);
+                }
+            }
+            /* Emit all allocas first for each block */
+            for (size_t k = 0; k < b->instruction_count; k++) {
+                if (b->instructions[k].kind == IR_ALLOCA && b->instructions[k].callee) {
+                    fprintf(out, "  %%%s = alloca i32\n", b->instructions[k].callee);
+                }
+            }
             for (size_t k = 0; k < b->instruction_count; k++) {
                 const Instruction *inst = &b->instructions[k];
-                if (inst->kind == IR_RET) {
-                    if (strcmp(ret_ty, "i32") == 0)
-                        fprintf(out, "  ret i32 0\n");
+                if (inst->kind == IR_ALLOCA) continue;
+                if (inst->kind == IR_ADD && inst->callee && inst->arg_count >= 2) {
+                    char left_buf[64], right_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], left_buf, sizeof(left_buf), &load_counter);
+                    emit_i32_operand(out, fir, &inst->args[1], right_buf, sizeof(right_buf), &load_counter);
+                    const char *llvm_op = (inst->callee[0] == '+') ? "add" : (inst->callee[0] == '-') ? "sub" :
+                        (inst->callee[0] == '*') ? "mul" : (inst->callee[0] == '/') ? "sdiv" : "srem";
+                    fprintf(out, "  %%binop.%lu = %s i32 %s, %s\n", (unsigned long)binop_counter, llvm_op, left_buf, right_buf);
+                    binop_counter++;
+                    continue;
+                }
+                if (inst->kind == IR_STORE && inst->callee && inst->arg_count >= 1) {
+                    char val_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
+                    /* Params use .addr; locals use name directly */
+                    if (is_param(fir, inst->callee))
+                        fprintf(out, "  store i32 %s, i32* %%%s.addr\n", val_buf, inst->callee);
                     else
+                        fprintf(out, "  store i32 %s, i32* %%%s\n", val_buf, inst->callee);
+                    continue;
+                }
+                if (inst->kind == IR_RET) {
+                    if (strcmp(ret_ty, "i32") == 0) {
+                        if (inst->arg_count >= 1 && inst->args) {
+                            char val_buf[64];
+                            emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
+                            fprintf(out, "  ret i32 %s\n", val_buf);
+                        } else {
+                            fprintf(out, "  ret i32 0\n");
+                        }
+                    } else {
                         fprintf(out, "  ret void\n");
+                    }
                 } else if (inst->kind == IR_COND_BR && inst->callee && inst->arg_count >= 2
                            && inst->block_target && inst->block_target_else) {
                     const char *icmp = llvm_icmp_for(inst->callee);
-                    const char *left = inst->args[0].value ? inst->args[0].value : "0";
-                    const char *right = inst->args[1].value ? inst->args[1].value : "0";
-                    /* Variable names start with letter/underscore; literals are numeric */
-                    int left_is_var = (inst->args[0].kind == IR_VAL_INT && inst->args[0].value
-                                       && (inst->args[0].value[0] == '-' || (inst->args[0].value[0] >= '0' && inst->args[0].value[0] <= '9')) ? 0 : 1);
-                    int right_is_var = (inst->args[1].kind == IR_VAL_INT && inst->args[1].value
-                                        && (inst->args[1].value[0] == '-' || (inst->args[1].value[0] >= '0' && inst->args[1].value[0] <= '9')) ? 0 : 1);
-                    fprintf(out, "  %%cond.%zu = icmp %s i32 %s%s, %s%s\n", icmp_counter, icmp,
-                            left_is_var ? "%" : "", left, right_is_var ? "%" : "", right);
+                    char left_buf[64], right_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], left_buf, sizeof(left_buf), &load_counter);
+                    emit_i32_operand(out, fir, &inst->args[1], right_buf, sizeof(right_buf), &load_counter);
+                    fprintf(out, "  %%cond.%zu = icmp %s i32 %s, %s\n", icmp_counter, icmp, left_buf, right_buf);
                     fprintf(out, "  br i1 %%cond.%zu, label %%%s, label %%%s\n", icmp_counter++,
                             inst->block_target, inst->block_target_else);
                 } else if (inst->kind == IR_BR && inst->block_target) {
@@ -152,21 +250,33 @@ static void emit_llvm_impl(const ModuleIr *module) {
                     fprintf(out, "  %%1 = call i32 @printf(i8* %%fmt.ptr, i8* %%str.ptr)\n");
                 } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print") != 0) {
                     int is_in_module = 0;
+                    size_t callee_fi = 0;
                     for (size_t fi = 0; fi < module->function_count; fi++) {
                         if (strcmp(module->functions[fi].name, inst->callee) == 0) {
                             is_in_module = 1;
+                            callee_fi = fi;
                             break;
                         }
                     }
                     if (is_in_module) {
-                        fprintf(out, "  call void @%s(", inst->callee);
+                        const char *callee_ret = llvm_type_for(module->functions[callee_fi].return_type);
+                        if (strcmp(callee_ret, "void") == 0) {
+                            fprintf(out, "  call void @%s(", inst->callee);
+                        } else {
+                            if (inst->result_ssa)
+                                fprintf(out, "  %%%s = call %s @%s(", inst->result_ssa, callee_ret, inst->callee);
+                            else
+                                fprintf(out, "  call %s @%s(", callee_ret, inst->callee);
+                        }
                         for (size_t a = 0; a < inst->arg_count; a++) {
                             if (a > 0) fprintf(out, ", ");
                             if (inst->args[a].kind == IR_VAL_STR && inst->args[a].value) {
                                 size_t n = strlen(inst->args[a].value) + 1;
                                 fprintf(out, "i8* getelementptr inbounds ([%zu x i8], [%zu x i8]* @.str.%zu, i64 0, i64 0)", n, n, str_idx++);
-                            } else if (inst->args[a].value) {
-                                fprintf(out, "i32 %s", inst->args[a].value);
+                            } else if (inst->args[a].kind == IR_VAL_INT) {
+                                char arg_buf[64];
+                                emit_i32_operand(out, fir, &inst->args[a], arg_buf, sizeof(arg_buf), &load_counter);
+                                fprintf(out, "i32 %s", arg_buf);
                             } else {
                                 fprintf(out, "i32 0");
                             }
@@ -199,22 +309,43 @@ void backend_quantum_emit_stub(const ModuleIr *module) {
 
 static void emit_qasm_impl(const ModuleIr *module, FILE *out) {
     FILE *f = out ? out : stdout;
+    /* Find first function with quantum ops (e.g. bell_pair) */
+    const FunctionIr *qfn = NULL;
     for (size_t i = 0; i < module->function_count; i++) {
-        if (strcmp(module->functions[i].name, "bell_pair") == 0) {
-            fprintf(f, "OPENQASM 2.0;\n");
-            fprintf(f, "include \"qelib1.inc\";\n");
-            fprintf(f, "qreg q[2];\n");
-            fprintf(f, "creg c[2];\n");
-            fprintf(f, "h q[0];\n");
-            fprintf(f, "cx q[0],q[1];\n");
-            fprintf(f, "measure q -> c;\n");
-            return;
+        if (module->functions[i].quantum_ops && module->functions[i].quantum_op_count > 0) {
+            qfn = &module->functions[i];
+            break;
         }
     }
     fprintf(f, "OPENQASM 2.0;\n");
     fprintf(f, "include \"qelib1.inc\";\n");
-    fprintf(f, "qreg q[1];\n");
-    fprintf(f, "creg c[1];\n");
+    if (!qfn) {
+        fprintf(f, "qreg q[1];\n");
+        fprintf(f, "creg c[1];\n");
+        return;
+    }
+    /* Emit from quantum IR: collect allocs, then gates, then measure */
+    size_t total_qubits = 0;
+    for (size_t k = 0; k < qfn->quantum_op_count; k++) {
+        const QuantumOp *qop = &qfn->quantum_ops[k];
+        if (qop->kind == QOP_ALLOC_QREG)
+            total_qubits += qop->reg_size;
+    }
+    if (total_qubits == 0) total_qubits = 1;
+    fprintf(f, "qreg q[%zu];\n", total_qubits);
+    fprintf(f, "creg c[%zu];\n", total_qubits);
+    /* Map register names to QASM qubit indices (simple: first alloc gets 0..n-1, etc.) */
+    size_t next_idx = 0;
+    for (size_t k = 0; k < qfn->quantum_op_count; k++) {
+        const QuantumOp *qop = &qfn->quantum_ops[k];
+        if (qop->kind == QOP_H && qop->reg_name) {
+            fprintf(f, "h q[%zu];\n", qop->index);
+        } else if (qop->kind == QOP_CX && qop->reg_name && qop->target_reg) {
+            fprintf(f, "cx q[%zu],q[%zu];\n", qop->ctrl_idx, qop->target_idx);
+        }
+    }
+    /* Measure all */
+    fprintf(f, "measure q -> c;\n");
 }
 
 void backend_quantum_emit_qasm(const ModuleIr *module) {

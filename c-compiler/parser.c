@@ -443,6 +443,310 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         return 1;
     }
 
+    if (peek(tokens, token_count, i, TOK_FOR)) {
+        (*i)++;
+        if (!consume(tokens, token_count, i, TOK_LPAREN)) {
+            set_error("expected '(' after 'for'");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_FOR;
+        s->for_init = NULL;
+        s->for_step = NULL;
+        s->init = NULL;
+        s->body = NULL;
+        s->body_count = 0;
+        if (peek(tokens, token_count, i, TOK_SEMICOLON)) {
+            (void)consume(tokens, token_count, i, TOK_SEMICOLON);  /* empty init */
+        } else {
+            Statement *init_stmt = NULL;
+            if (parse_stmt(tokens, token_count, i, &init_stmt) && init_stmt) {
+                s->for_init = init_stmt;
+            }
+        }
+        /* parse condition */
+        if (!peek(tokens, token_count, i, TOK_SEMICOLON)) {
+            s->init = (Expr *)malloc(sizeof(Expr));
+            if (s->init && !parse_expr(tokens, token_count, i, s->init)) {
+                ast_free_expr(s->init);
+                free(s->init);
+                s->init = NULL;
+            }
+        }
+        if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected ';' after for condition");
+            return 0;
+        }
+        if (!peek(tokens, token_count, i, TOK_RPAREN)) {
+            /* Step: ident = expr (no semicolon) */
+            if (peek(tokens, token_count, i, TOK_IDENTIFIER) && tokens[*i].value) {
+                size_t next = *i + 1;
+                if (next < token_count && tokens[next].kind == TOK_OPERATOR && tokens[next].value &&
+                    strcmp(tokens[next].value, "=") == 0) {
+                    Statement *step_stmt = (Statement *)calloc(1, sizeof(Statement));
+                    if (step_stmt) {
+                        step_stmt->kind = STMT_ASSIGN;
+                        step_stmt->let_name = strdup(tokens[*i].value);
+                        *i = next + 1;
+                        step_stmt->init = (Expr *)malloc(sizeof(Expr));
+                        if (step_stmt->let_name && step_stmt->init && parse_expr(tokens, token_count, i, step_stmt->init)) {
+                            s->for_step = step_stmt;
+                        } else {
+                            ast_free_statement(step_stmt);
+                            free(step_stmt);
+                        }
+                    }
+                }
+            }
+        }
+        if (!consume(tokens, token_count, i, TOK_RPAREN)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected ')' after for step");
+            return 0;
+        }
+        if (!consume(tokens, token_count, i, TOK_LBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '{' before for body");
+            return 0;
+        }
+        size_t cap = 0;
+        while (*i < token_count && !peek(tokens, token_count, i, TOK_RBRACE)) {
+            Statement *inner = NULL;
+            if (!parse_stmt(tokens, token_count, i, &inner)) {
+                ast_free_statement(s);
+                free(s);
+                return 0;
+            }
+            if (!inner) break;
+            if (s->body_count >= cap) {
+                size_t new_cap = cap ? cap * 2 : BUF_INIT;
+                Statement *n = (Statement *)realloc(s->body, new_cap * sizeof(Statement));
+                if (!n) {
+                    ast_free_statement(inner);
+                    free(inner);
+                    ast_free_statement(s);
+                    free(s);
+                    return 0;
+                }
+                s->body = n;
+                cap = new_cap;
+            }
+            s->body[s->body_count++] = *inner;
+            free(inner);
+        }
+        if (!consume(tokens, token_count, i, TOK_RBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '}' to close for body");
+            return 0;
+        }
+        *out_stmt = s;
+        return 1;
+    }
+
+    if (peek(tokens, token_count, i, TOK_WHILE)) {
+        (*i)++;
+        if (!consume(tokens, token_count, i, TOK_LPAREN)) {
+            set_error("expected '(' after 'while'");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_WHILE;
+        s->init = (Expr *)malloc(sizeof(Expr));
+        if (!s->init) { free(s); return 0; }
+        if (!parse_expr(tokens, token_count, i, s->init)) {
+            ast_free_expr(s->init);
+            free(s->init);
+            free(s);
+            set_error("expected condition after 'while'");
+            return 0;
+        }
+        if (!consume(tokens, token_count, i, TOK_RPAREN)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected ')' after while condition");
+            return 0;
+        }
+        if (!consume(tokens, token_count, i, TOK_LBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '{' before while body");
+            return 0;
+        }
+        s->body = NULL;
+        s->body_count = 0;
+        size_t cap = 0;
+        while (*i < token_count && !peek(tokens, token_count, i, TOK_RBRACE)) {
+            Statement *inner = NULL;
+            if (!parse_stmt(tokens, token_count, i, &inner)) {
+                ast_free_statement(s);
+                free(s);
+                return 0;
+            }
+            if (!inner) break;
+            if (s->body_count >= cap) {
+                size_t new_cap = cap ? cap * 2 : BUF_INIT;
+                Statement *n = (Statement *)realloc(s->body, new_cap * sizeof(Statement));
+                if (!n) {
+                    ast_free_statement(inner);
+                    free(inner);
+                    ast_free_statement(s);
+                    free(s);
+                    return 0;
+                }
+                s->body = n;
+                cap = new_cap;
+            }
+            s->body[s->body_count++] = *inner;
+            free(inner);
+        }
+        if (!consume(tokens, token_count, i, TOK_RBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '}' to close while body");
+            return 0;
+        }
+        *out_stmt = s;
+        return 1;
+    }
+
+    if (peek(tokens, token_count, i, TOK_LOOP)) {
+        (*i)++;
+        if (!consume(tokens, token_count, i, TOK_LBRACE)) {
+            set_error("expected '{' after 'loop'");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_LOOP;
+        s->body = NULL;
+        s->body_count = 0;
+        size_t cap = 0;
+        while (*i < token_count && !peek(tokens, token_count, i, TOK_RBRACE)) {
+            Statement *inner = NULL;
+            if (!parse_stmt(tokens, token_count, i, &inner)) {
+                ast_free_statement(s);
+                free(s);
+                return 0;
+            }
+            if (!inner) break;
+            if (s->body_count >= cap) {
+                size_t new_cap = cap ? cap * 2 : BUF_INIT;
+                Statement *n = (Statement *)realloc(s->body, new_cap * sizeof(Statement));
+                if (!n) {
+                    ast_free_statement(inner);
+                    free(inner);
+                    ast_free_statement(s);
+                    free(s);
+                    return 0;
+                }
+                s->body = n;
+                cap = new_cap;
+            }
+            s->body[s->body_count++] = *inner;
+            free(inner);
+        }
+        if (!consume(tokens, token_count, i, TOK_RBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '}' to close loop body");
+            return 0;
+        }
+        *out_stmt = s;
+        return 1;
+    }
+
+    if (peek(tokens, token_count, i, TOK_BREAK)) {
+        (*i)++;
+        if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
+            set_error("expected ';' after 'break'");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_BREAK;
+        *out_stmt = s;
+        return 1;
+    }
+
+    if (peek(tokens, token_count, i, TOK_CONTINUE)) {
+        (*i)++;
+        if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
+            set_error("expected ';' after 'continue'");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_CONTINUE;
+        *out_stmt = s;
+        return 1;
+    }
+
+    if (peek(tokens, token_count, i, TOK_RETURN)) {
+        (*i)++;
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) return 0;
+        s->kind = STMT_RETURN;
+        s->init = NULL;
+        if (!peek(tokens, token_count, i, TOK_SEMICOLON)) {
+            s->init = (Expr *)malloc(sizeof(Expr));
+            if (!s->init) { free(s); return 0; }
+            if (!parse_expr(tokens, token_count, i, s->init)) {
+                ast_free_expr(s->init);
+                free(s->init);
+                free(s);
+                set_error("expected expression or ';' after 'return'");
+                return 0;
+            }
+        }
+        if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
+            if (s->init) ast_free_expr(s->init);
+            free(s);
+            set_error("expected ';' after return");
+            return 0;
+        }
+        *out_stmt = s;
+        return 1;
+    }
+
+    /* Assignment: ident = expr ; */
+    if (peek(tokens, token_count, i, TOK_IDENTIFIER) && tokens[*i].value) {
+        size_t next = *i + 1;
+        if (next < token_count && tokens[next].kind == TOK_OPERATOR && tokens[next].value &&
+            strcmp(tokens[next].value, "=") == 0) {
+            Statement *s = (Statement *)calloc(1, sizeof(Statement));
+            if (!s) return 0;
+            s->kind = STMT_ASSIGN;
+            s->let_name = strdup(tokens[*i].value);
+            if (!s->let_name) { free(s); return 0; }
+            *i = next + 1;  /* consume ident and = */
+            s->init = (Expr *)malloc(sizeof(Expr));
+            if (!s->init) { free(s->let_name); free(s); return 0; }
+            if (!parse_expr(tokens, token_count, i, s->init)) {
+                ast_free_expr(s->init);
+                free(s->init);
+                free(s->let_name);
+                free(s);
+                set_error("expected expression after '='");
+                return 0;
+            }
+            if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
+                ast_free_statement(s);
+                free(s);
+                set_error("expected ';' after assignment");
+                return 0;
+            }
+            *out_stmt = s;
+            return 1;
+        }
+    }
+
     /* Expression statement: expr ; */
     Expr ex;
     if (!parse_expr(tokens, token_count, i, &ex)) return 0;

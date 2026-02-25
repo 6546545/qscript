@@ -13,7 +13,7 @@ QScript is an experimental **low-level yet readable programming language** desig
 - **Backends**:
   - Classical: SSA-style IR lowered to **LLVM IR**; compiles to native via Clang.
   - Quantum: Emits **OpenQASM 2.0** for quantum circuits (e.g., Bell pair).
-- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs` (parameters), `examples/conditional.qs` (if/else).
+- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`.
 - **Swarms**: Optional Python workflows in `orchestration/` for spec drafting and example generation.
 
 ### Quickstart
@@ -53,9 +53,17 @@ clang -x ir out.ll -o hello
 - Types: `unit`, `i32`, `qreg<2>` only.
 - `main()` must have no parameters; other functions may have parameters.
 - `if`/`else` supported (comparison conditions).
-- No `loop`, `while`, `for`.
+- `let` bindings with variables usable in conditions and calls; arithmetic (`+`, `-`, `*`, `/`, `%`) in init.
+- `return;` and `return expr;` for early exit; functions can return `-> i32`.
+- `loop { ... }` and `break;` for control flow.
+- Mutable assignment: `x = expr;`
+- `while`, `for`, `continue`.
 - Quantum: only `alloc_qreg<2>`, `h`, `cx`, `measure_all`, `print_bits`.
 - See `docs/mvp-status.md` and `docs/language-tour-mvp.md` for details.
+
+### Planned (Items to Do)
+
+- (Control flow complete.)
 
 ### CLI Reference
 
@@ -69,31 +77,25 @@ clang -x ir out.ll -o hello
 
 ### Swarms Workflows (Optional)
 
-The `orchestration/` folder contains [swarms](https://github.com/kyegomez/swarms?tab=readme-ov-file)-based workflows for spec refinement and example generation.
+AI-assisted workflows for spec refinement, example generation, and error message improvement.
 
-**Install**:
+**Install**: `pip install swarms`
+
+**Run** (unified CLI from project root):
 ```bash
-pip install swarms
+python scripts/swarm.py spec "quantum type system"    # Spec refinement
+python scripts/swarm.py example "fn main() -> unit { let x = 1 + 2; }"  # Generate examples
+python scripts/swarm.py dx "undefined variable x"     # Improve error messages
 ```
 
-**Run**:
-```bash
-# Propose spec refinements for a topic
-python orchestration/spec_swarm.py "quantum type system"
-
-# Generate examples from spec text
-python orchestration/example_swarm.py "fn main() -> unit { ... }"
-
-# DX swarm (see orchestration/dx_swarm.py)
-python orchestration/dx_swarm.py
-```
+See `orchestration/README.md` for details.
 
 ### Repository Layout
 
 - `c-compiler/` – C compiler implementation (canonical for MVP).
 - `compiler/` – Legacy Rust prototype.
 - `docs/` – Specs, design docs, MVP status, language tour.
-- `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`.
+- `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`, `arithmetic.qs`, `loop.qs`, `return_value.qs`, `assignment.qs`.
 - `orchestration/` – Swarms workflows.
 - `scripts/` – `run_qasm.py` for running emitted QASM on a simulator.
 

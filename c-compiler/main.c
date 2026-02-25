@@ -21,9 +21,12 @@ static const char *token_kind_name(TokenKind k) {
         case TOK_IF: return "if";
         case TOK_ELSE: return "else";
         case TOK_LOOP: return "loop";
+        case TOK_FOR: return "for";
+        case TOK_WHILE: return "while";
         case TOK_QUANTUM: return "quantum";
         case TOK_RETURN: return "return";
         case TOK_BREAK: return "break";
+        case TOK_CONTINUE: return "continue";
         case TOK_IDENTIFIER: return "identifier";
         case TOK_INTEGER_LITERAL: return "integer";
         case TOK_STRING_LITERAL: return "string";
