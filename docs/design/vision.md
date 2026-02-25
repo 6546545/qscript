@@ -11,7 +11,7 @@ The **reference compiler and runtime glue code for the MVP are implemented in C*
 - **LLVM integration**: The LLVM C API allows direct integration for classical code generation without additional language runtimes.
 - **Minimal dependencies**: No package manager required; contributors can build with `gcc`/`clang` and standard tooling.
 
-C is **an implementation choice only**; QScript's syntax and semantics are designed independently and are **not derived from C** (or any other language). The compiler lives in `c-compiler/`; the legacy Rust prototype in `compiler/` may be retained for reference but is not the canonical MVP implementation.
+C is **an implementation choice only**; QScript's syntax and semantics are designed independently and are **not derived from C** (or any other language). The compiler lives in `c-compiler/`.
 
 ### Core Goals
 

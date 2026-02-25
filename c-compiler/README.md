@@ -1,6 +1,6 @@
 # QScript C prototype (qlangc)
 
-C implementation of the QScript compiler: lexer, parser, typecheck, IR, and classical/quantum backends. Feature parity with the Rust compiler for the supported subset.
+C implementation of the QScript compiler: lexer, parser, AST, typecheck, IR, and classical/quantum backends.
 
 ## Build
 

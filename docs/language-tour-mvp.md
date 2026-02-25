@@ -89,7 +89,7 @@ fn main() -> unit {
 }
 ```
 
-- **`let x = 1 + 2`**: Arithmetic operators `+`, `-`, `*`, `/`, `%` in let initializers.
+- **`let x = 1 + 2`**: Arithmetic operators `+`, `-`, `*`, `/`, `%` in let initializers. Unary minus: `let n = -1;`, `let m = -x;`.
 - **`return;`**: Early exit from a function. Skips remaining statements.
 
 ---

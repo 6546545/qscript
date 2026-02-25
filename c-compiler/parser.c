@@ -142,8 +142,29 @@ static int parse_expr(const Token *tokens, size_t token_count, size_t *i, Expr *
     return 1;
 }
 
-/* Parse expression unary: "!" unary | primary postfix* where postfix = [ expr ] | ( args ) */
+/* Parse expression unary: "-" unary | "!" unary | primary postfix* where postfix = [ expr ] | ( args ) */
 static int parse_expr_unary(const Token *tokens, size_t token_count, size_t *i, Expr *e) {
+    if (*i < token_count && tokens[*i].kind == TOK_OPERATOR && tokens[*i].value &&
+        strcmp(tokens[*i].value, "-") == 0) {
+        (*i)++;
+        Expr inner;
+        if (!parse_expr_unary(tokens, token_count, i, &inner)) return 0;
+        Expr *base = (Expr *)malloc(sizeof(Expr));
+        if (!base) { ast_free_expr(&inner); return 0; }
+        memset(base, 0, sizeof(Expr));
+        base->kind = EXPR_INT;
+        base->value = strdup("0");
+        if (!base->value) { ast_free_expr(&inner); free(base); return 0; }
+        Expr *right = (Expr *)malloc(sizeof(Expr));
+        if (!right) { ast_free_expr(&inner); free(base->value); free(base); return 0; }
+        *right = inner;
+        memset(e, 0, sizeof(Expr));
+        e->kind = EXPR_BINARY;
+        e->value = strdup("-");
+        e->base = base;
+        e->right = right;
+        return e->value ? 1 : 0;
+    }
     if (*i < token_count && tokens[*i].kind == TOK_OPERATOR && tokens[*i].value &&
         strcmp(tokens[*i].value, "!") == 0) {
         (*i)++;

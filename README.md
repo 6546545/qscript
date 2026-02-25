@@ -13,7 +13,7 @@ QScript is an experimental **low-level yet readable programming language** desig
 - **Backends**:
   - Classical: SSA-style IR lowered to **LLVM IR**; compiles to native via Clang.
   - Quantum: Emits **OpenQASM 2.0** for quantum circuits (e.g., Bell pair).
-- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/else_if.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`, `examples/print_int.qs`, `examples/logical_and_or.qs`, `examples/bool_type.qs`, `examples/type_alias.qs`.
+- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/else_if.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`, `examples/print_int.qs`, `examples/logical_and_or.qs`, `examples/bool_type.qs`, `examples/type_alias.qs`, `examples/unary_minus.qs`, `examples/hex_and_escapes.qs`.
 - **Swarms**: Optional Python workflows in `orchestration/` for spec drafting and example generation.
 
 ### Quickstart
@@ -50,10 +50,10 @@ clang -x ir out.ll -o hello
 
 ### MVP Limitations
 
-- Types: `unit`, `i32`, `bool`, `qreg<2>`; type aliases: `type Foo = i32;`. Comments: `//` and `/* */`.
+- Types: `unit`, `i32`, `bool`, `qreg<2>`; type aliases: `type Foo = i32;`. Comments: `//` and `/* */`. Hex literals: `0x1a`. String escapes: `\n`, `\t`, `\"`, `\\`.
 - `main()` must have no parameters; other functions may have parameters.
 - `if`/`else`/`else if` supported (comparison conditions, `&&`, `||`, `!`).
-- `let` bindings with variables usable in conditions and calls; arithmetic (`+`, `-`, `*`, `/`, `%`) in init.
+- `let` bindings with variables usable in conditions and calls; arithmetic (`+`, `-`, `*`, `/`, `%`) and unary minus (`-1`, `-x`) in init.
 - `return;` and `return expr;` for early exit; functions can return `-> i32`.
 - `loop { ... }` and `break;` for control flow.
 - Mutable assignment: `x = expr;`
@@ -92,10 +92,9 @@ See `orchestration/README.md` for details.
 
 ### Repository Layout
 
-- `c-compiler/` – C compiler implementation (canonical for MVP).
-- `compiler/` – Legacy Rust prototype.
+- `c-compiler/` – Compiler implementation (lexer, parser, AST, typechecker, IR, classical and quantum backends).
 - `docs/` – Specs, design docs, MVP status, language tour.
-- `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`, `arithmetic.qs`, `loop.qs`, `return_value.qs`, `assignment.qs`.
+- `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`, `arithmetic.qs`, `loop.qs`, `return_value.qs`, `assignment.qs`, and others.
 - `orchestration/` – Swarms workflows.
 - `scripts/` – `run_qasm.py` for running emitted QASM on a simulator.
 

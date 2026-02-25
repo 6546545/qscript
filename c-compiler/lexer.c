@@ -1,5 +1,6 @@
 #include "lexer.h"
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -101,24 +102,65 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
 
         if (isdigit((unsigned char)*p)) {
             const char *start = p;
-            while (isdigit((unsigned char)*p)) p++;
-            char *value = strndup(start, (size_t)(p - start));
-            if (!value) goto fail;
-            Token t = { TOK_INTEGER_LITERAL, value };
-            if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            unsigned long long num = 0;
+            if (p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+                p += 2;
+                if (!*p || !isxdigit((unsigned char)*p)) goto fail;
+                while (isxdigit((unsigned char)*p)) {
+                    unsigned int d = (unsigned char)*p - '0';
+                    if (d > 9) d = (unsigned char)(*p | 32) - 'a' + 10;
+                    num = num * 16 + d;
+                    p++;
+                }
+                char dec[32];
+                (void)snprintf(dec, sizeof(dec), "%llu", num);
+                char *value = strdup(dec);
+                if (!value) goto fail;
+                Token t = { TOK_INTEGER_LITERAL, value };
+                if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            } else {
+                while (isdigit((unsigned char)*p)) p++;
+                char *value = strndup(start, (size_t)(p - start));
+                if (!value) goto fail;
+                Token t = { TOK_INTEGER_LITERAL, value };
+                if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            }
             continue;
         }
 
         if (*p == '"') {
-            const char *start = ++p;
-            while (*p && *p != '"') {
-                if (*p == '\\') { p++; if (!*p) goto fail; }
-                p++;
-            }
-            if (!*p) goto fail; /* unterminated string */
-            char *value = strndup(start, (size_t)(p - start));
+            p++;
+            size_t cap = 64, len = 0;
+            char *value = (char *)malloc(cap);
             if (!value) goto fail;
+            while (*p && *p != '"') {
+                if (len >= cap) {
+                    cap *= 2;
+                    char *n = (char *)realloc(value, cap);
+                    if (!n) { free(value); goto fail; }
+                    value = n;
+                }
+                if (*p == '\\') {
+                    p++;
+                    if (!*p) { free(value); goto fail; }
+                    switch (*p) {
+                        case 'n': value[len++] = '\n'; break;
+                        case 't': value[len++] = '\t'; break;
+                        case 'r': value[len++] = '\r'; break;
+                        case '"': value[len++] = '"'; break;
+                        case '\\': value[len++] = '\\'; break;
+                        default: value[len++] = *p; break;
+                    }
+                    p++;
+                } else {
+                    value[len++] = *p++;
+                }
+            }
+            if (!*p) { free(value); goto fail; } /* unterminated string */
             p++; /* consume closing " */
+            value[len] = '\0';
+            char *v = (char *)realloc(value, len + 1);
+            if (v) value = v;
             Token t = { TOK_STRING_LITERAL, value };
             if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             continue;
