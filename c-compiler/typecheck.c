@@ -79,6 +79,9 @@ static int check_expr(const Expr *e) {
         case EXPR_INDEX:
             if (check_expr(e->base) != 0 || check_expr(e->index) != 0) return -1;
             return 0;
+        case EXPR_BINARY:
+            if (check_expr(e->base) != 0 || check_expr(e->right) != 0) return -1;
+            return 0;
         case EXPR_CALL:
             if (!e->base) return -1;
             if (check_expr(e->base) != 0) return -1;
@@ -116,6 +119,15 @@ static int check_statement(const Statement *s) {
                 if (check_statement(&s->body[i]) != 0) return -1;
             }
             return 0;
+        case STMT_IF:
+            if (s->init && check_expr(s->init) != 0) return -1;
+            for (size_t i = 0; i < s->body_count; i++) {
+                if (check_statement(&s->body[i]) != 0) return -1;
+            }
+            for (size_t i = 0; i < s->else_body_count; i++) {
+                if (check_statement(&s->else_body[i]) != 0) return -1;
+            }
+            return 0;
         case STMT_EXPR:
             if (s->init && check_expr(s->init) != 0) return -1;
             return 0;
@@ -149,7 +161,15 @@ int typecheck(const Program *program) {
 
     for (size_t i = 0; i < program->function_count; i++) {
         const Function *f = &program->functions[i];
+        if (strcmp(f->name, "main") == 0 && f->param_count != 0) {
+            (void)snprintf(typecheck_error, sizeof(typecheck_error),
+                "main() must have no parameters");
+            return -1;
+        }
         scope_clear();
+        for (size_t j = 0; j < f->param_count; j++) {
+            scope_push(f->params[j].name, f->params[j].type);
+        }
         for (size_t j = 0; j < f->body_count; j++) {
             if (check_statement(&f->body[j]) != 0) return -1;
         }

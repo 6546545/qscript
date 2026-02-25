@@ -29,9 +29,31 @@ static int consume(const Token *tokens, size_t token_count, size_t *i, TokenKind
 }
 
 /* Forward declarations */
+static int parse_expr_unary(const Token *tokens, size_t token_count, size_t *i, Expr *e);
 static int parse_expr(const Token *tokens, size_t token_count, size_t *i, Expr *e);
 static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
                       Statement **out_stmt);
+
+static int is_binary_op(const Token *tokens, size_t token_count, size_t i) {
+    if (i >= token_count) return 0;
+    const Token *t = &tokens[i];
+    if (t->kind == TOK_LANGLE || t->kind == TOK_RANGLE) return 1;
+    if (t->kind == TOK_OPERATOR && t->value) {
+        if (strcmp(t->value, "==") == 0 || strcmp(t->value, "!=") == 0 ||
+            strcmp(t->value, "<=") == 0 || strcmp(t->value, ">=") == 0 ||
+            strcmp(t->value, "+") == 0 || strcmp(t->value, "-") == 0 ||
+            strcmp(t->value, "*") == 0 || strcmp(t->value, "/") == 0 || strcmp(t->value, "%") == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static const char *binary_op_value(const Token *tokens, size_t i) {
+    const Token *t = &tokens[i];
+    if (t->kind == TOK_LANGLE) return "<";
+    if (t->kind == TOK_RANGLE) return ">";
+    return t->value ? t->value : "?";
+}
 
 /* Parse primary: string | int | ident | ident<integer> */
 static int parse_primary(const Token *tokens, size_t token_count, size_t *i, Expr *e) {
@@ -79,8 +101,34 @@ static int parse_primary(const Token *tokens, size_t token_count, size_t *i, Exp
     return 0;
 }
 
-/* Parse expression: primary postfix* where postfix = [ expr ] | ( args ) */
+/* Parse expression: expr_unary (op expr_unary)* for binary operators */
 static int parse_expr(const Token *tokens, size_t token_count, size_t *i, Expr *e) {
+    if (!parse_expr_unary(tokens, token_count, i, e)) return 0;
+    while (is_binary_op(tokens, token_count, *i)) {
+        const char *op = binary_op_value(tokens, *i);
+        (*i)++;
+        Expr right;
+        if (!parse_expr_unary(tokens, token_count, i, &right)) {
+            ast_free_expr(e);
+            return 0;
+        }
+        Expr *left = (Expr *)malloc(sizeof(Expr));
+        if (!left) { ast_free_expr(e); ast_free_expr(&right); return 0; }
+        *left = *e;
+        memset(e, 0, sizeof(Expr));
+        e->kind = EXPR_BINARY;
+        e->value = strdup(op);
+        if (!e->value) { ast_free_expr(left); ast_free_expr(&right); free(left); return 0; }
+        e->base = left;
+        e->right = (Expr *)malloc(sizeof(Expr));
+        if (!e->right) { ast_free_expr(left); ast_free_expr(&right); free(e->value); return 0; }
+        *e->right = right;
+    }
+    return 1;
+}
+
+/* Parse expression unary: primary postfix* where postfix = [ expr ] | ( args ) */
+static int parse_expr_unary(const Token *tokens, size_t token_count, size_t *i, Expr *e) {
     Expr primary;
     if (!parse_primary(tokens, token_count, i, &primary)) return 0;
     *e = primary;
@@ -298,6 +346,103 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         return 1;
     }
 
+    if (peek(tokens, token_count, i, TOK_IF)) {
+        (*i)++;
+        Expr cond;
+        if (!parse_expr(tokens, token_count, i, &cond)) {
+            set_error("expected condition after 'if'");
+            return 0;
+        }
+        if (!consume(tokens, token_count, i, TOK_LBRACE)) {
+            ast_free_expr(&cond);
+            set_error("expected '{' after if condition");
+            return 0;
+        }
+        Statement *s = (Statement *)calloc(1, sizeof(Statement));
+        if (!s) { ast_free_expr(&cond); return 0; }
+        s->kind = STMT_IF;
+        s->init = (Expr *)malloc(sizeof(Expr));
+        if (!s->init) { ast_free_expr(&cond); free(s); return 0; }
+        *s->init = cond;
+        s->body = NULL;
+        s->body_count = 0;
+        s->else_body = NULL;
+        s->else_body_count = 0;
+        size_t cap = 0;
+        while (*i < token_count && !peek(tokens, token_count, i, TOK_RBRACE)) {
+            Statement *inner = NULL;
+            if (!parse_stmt(tokens, token_count, i, &inner)) {
+                ast_free_statement(s);
+                free(s);
+                return 0;
+            }
+            if (!inner) break;
+            if (s->body_count >= cap) {
+                size_t new_cap = cap ? cap * 2 : BUF_INIT;
+                Statement *n = (Statement *)realloc(s->body, new_cap * sizeof(Statement));
+                if (!n) {
+                    ast_free_statement(inner);
+                    free(inner);
+                    ast_free_statement(s);
+                    free(s);
+                    return 0;
+                }
+                s->body = n;
+                cap = new_cap;
+            }
+            s->body[s->body_count++] = *inner;
+            free(inner);
+        }
+        if (!consume(tokens, token_count, i, TOK_RBRACE)) {
+            ast_free_statement(s);
+            free(s);
+            set_error("expected '}' to close if body");
+            return 0;
+        }
+        if (peek(tokens, token_count, i, TOK_ELSE)) {
+            (*i)++;
+            if (!consume(tokens, token_count, i, TOK_LBRACE)) {
+                ast_free_statement(s);
+                free(s);
+                set_error("expected '{' after 'else'");
+                return 0;
+            }
+            size_t else_cap = 0;
+            while (*i < token_count && !peek(tokens, token_count, i, TOK_RBRACE)) {
+                Statement *inner = NULL;
+                if (!parse_stmt(tokens, token_count, i, &inner)) {
+                    ast_free_statement(s);
+                    free(s);
+                    return 0;
+                }
+                if (!inner) break;
+                if (s->else_body_count >= else_cap) {
+                    size_t new_cap = else_cap ? else_cap * 2 : BUF_INIT;
+                    Statement *n = (Statement *)realloc(s->else_body, new_cap * sizeof(Statement));
+                    if (!n) {
+                        ast_free_statement(inner);
+                        free(inner);
+                        ast_free_statement(s);
+                        free(s);
+                        return 0;
+                    }
+                    s->else_body = n;
+                    else_cap = new_cap;
+                }
+                s->else_body[s->else_body_count++] = *inner;
+                free(inner);
+            }
+            if (!consume(tokens, token_count, i, TOK_RBRACE)) {
+                ast_free_statement(s);
+                free(s);
+                set_error("expected '}' to close else body");
+                return 0;
+            }
+        }
+        *out_stmt = s;
+        return 1;
+    }
+
     /* Expression statement: expr ; */
     Expr ex;
     if (!parse_expr(tokens, token_count, i, &ex)) return 0;
@@ -380,31 +525,229 @@ Program *parse(const Token *tokens, size_t token_count) {
             set_error("expected '(' after function name");
             goto fail;
         }
+        Param *params = NULL;
+        size_t param_count = 0, param_cap = 0;
+        while (!peek(tokens, token_count, &i, TOK_RPAREN)) {
+            if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER || !tokens[i].value) {
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("expected parameter name");
+                goto fail;
+            }
+            char *pname = strdup(tokens[i].value);
+            if (!pname) {
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("out of memory");
+                goto fail;
+            }
+            i++;
+            if (!consume(tokens, token_count, &i, TOK_COLON)) {
+                free(pname);
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("expected ':' after parameter name");
+                goto fail;
+            }
+            if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER || !tokens[i].value) {
+                free(pname);
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("expected parameter type");
+                goto fail;
+            }
+            char *ptype = strdup(tokens[i].value);
+            if (!ptype) {
+                free(pname);
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("out of memory");
+                goto fail;
+            }
+            i++;
+            if (i < token_count && tokens[i].kind == TOK_LANGLE) {
+                char buf[64];
+                size_t pos = (size_t)snprintf(buf, sizeof(buf), "%s<", ptype);
+                free(ptype);
+                ptype = NULL;
+                i++;
+                if (i < token_count && tokens[i].kind == TOK_INTEGER_LITERAL && tokens[i].value) {
+                    size_t nlen = strlen(tokens[i].value);
+                    if (pos + nlen + 2 < sizeof(buf)) {
+                        memcpy(buf + pos, tokens[i].value, nlen + 1);
+                        pos += nlen;
+                    }
+                    i++;
+                }
+                if (i < token_count && tokens[i].kind == TOK_RANGLE) {
+                    buf[pos++] = '>';
+                    buf[pos] = '\0';
+                    i++;
+                }
+                ptype = strdup(buf);
+                if (!ptype) {
+                    free(pname);
+                    if (params) {
+                        for (size_t k = 0; k < param_count; k++) {
+                            free(params[k].name);
+                            free(params[k].type);
+                        }
+                        free(params);
+                    }
+                    free(name);
+                    set_error("out of memory");
+                    goto fail;
+                }
+            }
+            if (param_count >= param_cap) {
+                size_t new_cap = param_cap ? param_cap * 2 : 4;
+                Param *n = (Param *)realloc(params, new_cap * sizeof(Param));
+                if (!n) {
+                    free(pname);
+                    free(ptype);
+                    if (params) {
+                        for (size_t k = 0; k < param_count; k++) {
+                            free(params[k].name);
+                            free(params[k].type);
+                        }
+                        free(params);
+                    }
+                    free(name);
+                    set_error("out of memory");
+                    goto fail;
+                }
+                params = n;
+                param_cap = new_cap;
+            }
+            params[param_count].name = pname;
+            params[param_count].type = ptype;
+            param_count++;
+            if (!consume(tokens, token_count, &i, TOK_COMMA))
+                break;
+        }
         if (!consume(tokens, token_count, &i, TOK_RPAREN)) {
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
             free(name);
-            set_error("expected ')' (no parameters yet)");
+            set_error("expected ')' after parameter list");
             goto fail;
         }
         if (!consume(tokens, token_count, &i, TOK_ARROW)) {
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
             free(name);
             set_error("expected '->' return type");
             goto fail;
         }
         if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER) {
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
             free(name);
             set_error("expected return type after '->'");
             goto fail;
         }
+        char *return_type = strdup(tokens[i].value);
+        if (!return_type) {
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
+            free(name);
+            set_error("out of memory");
+            goto fail;
+        }
         i++;
         if (i < token_count && tokens[i].kind == TOK_LANGLE) {
-            do {
-                if (tokens[i].kind == TOK_LANGLE) i++;
-                else if (tokens[i].kind == TOK_RANGLE) { i++; break; }
+            char buf[64];
+            size_t pos = (size_t)snprintf(buf, sizeof(buf), "%s<", return_type);
+            free(return_type);
+            return_type = NULL;
+            i++;
+            if (i < token_count && tokens[i].kind == TOK_INTEGER_LITERAL && tokens[i].value) {
+                size_t nlen = strlen(tokens[i].value);
+                if (pos + nlen + 2 < sizeof(buf)) {
+                    memcpy(buf + pos, tokens[i].value, nlen + 1);
+                    pos += nlen;
+                }
                 i++;
-            } while (i < token_count);
+            }
+            if (i < token_count && tokens[i].kind == TOK_RANGLE) {
+                buf[pos++] = '>';
+                buf[pos] = '\0';
+                i++;
+            }
+            return_type = strdup(buf);
+            if (!return_type) {
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
+                free(name);
+                set_error("out of memory");
+                goto fail;
+            }
         }
 
         if (!peek(tokens, token_count, &i, TOK_LBRACE)) {
+            free(return_type);
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
             free(name);
             set_error("expected '{' before function body");
             goto fail;
@@ -413,6 +756,14 @@ Program *parse(const Token *tokens, size_t token_count) {
         Statement *body = NULL;
         size_t body_count = 0;
         if (!parse_body(tokens, token_count, &i, &body, &body_count)) {
+            free(return_type);
+            if (params) {
+                for (size_t k = 0; k < param_count; k++) {
+                    free(params[k].name);
+                    free(params[k].type);
+                }
+                free(params);
+            }
             free(name);
             set_error("failed to parse function body");
             goto fail;
@@ -422,6 +773,14 @@ Program *parse(const Token *tokens, size_t token_count) {
             size_t new_cap = cap ? cap * 2 : BUF_INIT;
             Function *n = (Function *)realloc(list, new_cap * sizeof(Function));
             if (!n) {
+                free(return_type);
+                if (params) {
+                    for (size_t k = 0; k < param_count; k++) {
+                        free(params[k].name);
+                        free(params[k].type);
+                    }
+                    free(params);
+                }
                 free(name);
                 if (body) {
                     for (size_t k = 0; k < body_count; k++) ast_free_statement(&body[k]);
@@ -434,6 +793,9 @@ Program *parse(const Token *tokens, size_t token_count) {
             cap = new_cap;
         }
         list[count].name = name;
+        list[count].params = params;
+        list[count].param_count = param_count;
+        list[count].return_type = return_type;
         list[count].body = body;
         list[count].body_count = body_count;
         count++;
@@ -449,6 +811,14 @@ fail:
     if (list) {
         for (size_t j = 0; j < count; j++) {
             free(list[j].name);
+            free(list[j].return_type);
+            if (list[j].params) {
+                for (size_t k = 0; k < list[j].param_count; k++) {
+                    free(list[j].params[k].name);
+                    free(list[j].params[k].type);
+                }
+                free(list[j].params);
+            }
             if (list[j].body) {
                 for (size_t k = 0; k < list[j].body_count; k++) ast_free_statement(&list[j].body[k]);
                 free(list[j].body);

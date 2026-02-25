@@ -57,11 +57,47 @@ Expected: ~50% `00`, ~50% `11` (correlated Bell pair outcomes).
 
 ---
 
+## Functions with Parameters
+
+```qs
+fn greet(msg: i32) -> unit {
+    print("Greeting received");
+}
+
+fn main() -> unit {
+    greet(42);
+}
+```
+
+- **`fn greet(msg: i32) -> unit`**: Function with one parameter `msg` of type `i32`.
+- **`greet(42)`**: Call with an integer literal argument.
+- **Note**: `main()` must have no parameters; other functions may have parameters.
+
+---
+
+## Conditionals (if/else)
+
+```qs
+fn main() -> unit {
+    if 1 < 2 {
+        print("yes");
+    } else {
+        print("no");
+    }
+}
+```
+
+- **`if expr { ... } else { ... }`**: Conditional with comparison. Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`.
+- **Note**: MVP uses literal comparisons; variables in conditions require let-binding support in the classical IR.
+
+---
+
 ## MVP Syntax Summary
 
 | Construct | Example |
 |-----------|---------|
-| Function | `fn name() -> unit { ... }` |
+| Function | `fn name() -> unit { ... }` or `fn name(x: i32, y: i32) -> unit { ... }` |
+| Conditional | `if a < b { ... } else { ... }` |
 | Let binding | `let x = expr;` or `let x: type = expr;` |
 | Quantum block | `quantum { ... }` |
 | Call | `print("hi");` |
@@ -72,8 +108,7 @@ Expected: ~50% `00`, ~50% `11` (correlated Bell pair outcomes).
 
 ## What's Not in the MVP
 
-- Control flow: `if`, `else`, `loop`, `for`, `while`
-- Function parameters
+- Control flow: `loop`, `for`, `while`
 - Generics and complex types
 - Additional quantum gates beyond `h` and `cx`
 - Full linearity/ownership for quantum types

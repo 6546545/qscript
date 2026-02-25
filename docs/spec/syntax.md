@@ -95,7 +95,8 @@ This syntax is intentionally minimal for v0.1 and will evolve as the language an
 
 The **MVP parser** supports only:
 
-- Function declarations: `fn name() -> unit { ... }` (no parameters in MVP for `main`; parameters allowed for other functions).
+- Function declarations: `fn name(param: type, ...) -> return_type { ... }` (parameters allowed; `main()` must have no parameters).
+- `if expr { ... } else { ... }` conditionals with comparison expressions (`<`, `>`, `==`, `!=`, `<=`, `>=`).
 - `let` bindings with optional type annotation: `let x: i32 = 42;` or `let result = measure_all(q);`
 - Expression statements: `print("...");`, `h(q[0]);`, etc.
 - `return;` (for `unit` functions).

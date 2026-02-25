@@ -125,6 +125,10 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
         if (*p == ')') { Token t = { TOK_RPAREN, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
         if (*p == '[') { Token t = { TOK_LBRACKET, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
         if (*p == ']') { Token t = { TOK_RBRACKET, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (p[0] == '<' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("<=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '>' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup(">=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '=' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("==", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '!' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("!=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
         if (*p == '<') { Token t = { TOK_LANGLE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
         if (*p == '>') { Token t = { TOK_RANGLE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
         if (*p == ':') { Token t = { TOK_COLON, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }

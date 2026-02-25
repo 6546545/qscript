@@ -8,12 +8,14 @@ This page summarizes what works in the **Minimal Viable Product (MVP)** release.
 - **Compiler**: C-based implementation in `c-compiler/` (lexer, parser, AST, typechecker, IR, backends).
 - **Classical backend**: Compiles `hello_world.qs` to native executable (via C emission or LLVM IR).
 - **Quantum backend**: Emits OpenQASM for `bell_pair.qs`; documented simulator workflow.
-- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`.
+- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`.
 
 ## MVP Limitations
 
 - Only `unit`, `i32`, `qreg<2>` types.
-- No `if`/`else`, `loop`, `while`, `for`.
+- `main()` must have no parameters; other functions may have parameters.
+- `if`/`else` supported with comparison conditions (`<`, `>`, `==`, `!=`, `<=`, `>=`).
+- No `loop`, `while`, `for`.
 - No structs, pointers, or advanced memory model.
 - Quantum: only `alloc_qreg<2>`, `h`, `cx`, `measure_all`, `print_bits`.
 

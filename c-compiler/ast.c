@@ -13,6 +13,9 @@ void ast_free_expr(Expr *e) {
             for (size_t i = 0; i < e->arg_count; i++) ast_free_expr(&e->args[i]);
             free(e->args);
         }
+    } else if (e->kind == EXPR_BINARY) {
+        ast_free_expr(e->base);
+        ast_free_expr(e->right);
     }
 }
 
@@ -40,6 +43,17 @@ void ast_free_statement(Statement *s) {
         case STMT_EXPR:
             if (s->init) ast_free_expr(s->init);
             break;
+        case STMT_IF:
+            if (s->init) ast_free_expr(s->init);
+            if (s->body) {
+                for (size_t i = 0; i < s->body_count; i++) ast_free_statement(&s->body[i]);
+                free(s->body);
+            }
+            if (s->else_body) {
+                for (size_t i = 0; i < s->else_body_count; i++) ast_free_statement(&s->else_body[i]);
+                free(s->else_body);
+            }
+            break;
     }
 }
 
@@ -48,6 +62,14 @@ void ast_free(Program *program) {
     for (size_t i = 0; i < program->function_count; i++) {
         Function *f = &program->functions[i];
         free(f->name);
+        free(f->return_type);
+        if (f->params) {
+            for (size_t j = 0; j < f->param_count; j++) {
+                free(f->params[j].name);
+                free(f->params[j].type);
+            }
+            free(f->params);
+        }
         if (f->body) {
             for (size_t j = 0; j < f->body_count; j++) ast_free_statement(&f->body[j]);
             free(f->body);

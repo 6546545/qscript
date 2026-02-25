@@ -3,20 +3,21 @@
 
 #include <stddef.h>
 
-typedef enum { EXPR_STR, EXPR_INT, EXPR_IDENT, EXPR_CALL, EXPR_INDEX } ExprKind;
+typedef enum { EXPR_STR, EXPR_INT, EXPR_IDENT, EXPR_CALL, EXPR_INDEX, EXPR_BINARY } ExprKind;
 
 typedef struct Expr Expr;
 
 typedef struct Expr {
     ExprKind kind;
-    char *value;       /* owned; for STR, INT, IDENT */
-    Expr *base;        /* for EXPR_INDEX: base[index]; for EXPR_CALL: callee (as IDENT) */
+    char *value;       /* owned; for STR, INT, IDENT; for EXPR_BINARY: operator e.g. "<", "==" */
+    Expr *base;        /* for EXPR_INDEX: base[index]; for EXPR_CALL: callee; for EXPR_BINARY: left */
     Expr *index;       /* for EXPR_INDEX only */
+    Expr *right;       /* for EXPR_BINARY: right operand */
     Expr *args;        /* owned array; for EXPR_CALL only */
     size_t arg_count;
 } Expr;
 
-typedef enum { STMT_CALL, STMT_LET, STMT_QUANTUM_BLOCK, STMT_EXPR } StatementKind;
+typedef enum { STMT_CALL, STMT_LET, STMT_QUANTUM_BLOCK, STMT_EXPR, STMT_IF } StatementKind;
 
 typedef struct Statement Statement;
 
@@ -25,15 +26,25 @@ typedef struct Statement {
     char *callee;      /* owned; for STMT_CALL */
     char *let_name;    /* owned; for STMT_LET */
     char *let_type;    /* owned; optional type annotation for STMT_LET */
-    Expr *init;        /* for STMT_LET: init expr; for STMT_CALL/STMT_EXPR: args or expr */
+    Expr *init;        /* for STMT_LET: init expr; for STMT_CALL/STMT_EXPR: args or expr; for STMT_IF: condition */
     Expr *args;        /* owned array; for STMT_CALL */
     size_t arg_count;
-    Statement *body;   /* owned array; for STMT_QUANTUM_BLOCK */
+    Statement *body;   /* owned array; for STMT_QUANTUM_BLOCK, STMT_IF then-branch */
     size_t body_count;
+    Statement *else_body;  /* owned array; for STMT_IF else-branch; NULL if no else */
+    size_t else_body_count;
 } Statement;
+
+typedef struct Param {
+    char *name;   /* owned */
+    char *type;   /* owned, e.g. "i32", "unit", "qreg<2>" */
+} Param;
 
 typedef struct Function {
     char *name;           /* owned */
+    Param *params;        /* owned array; may be NULL if param_count == 0 */
+    size_t param_count;
+    char *return_type;    /* owned, e.g. "unit", "i32" */
     Statement *body;      /* owned array */
     size_t body_count;
 } Function;
