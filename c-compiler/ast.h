@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-typedef enum { EXPR_STR, EXPR_INT, EXPR_IDENT, EXPR_CALL, EXPR_INDEX, EXPR_BINARY } ExprKind;
+typedef enum { EXPR_STR, EXPR_INT, EXPR_BOOL, EXPR_IDENT, EXPR_CALL, EXPR_INDEX, EXPR_BINARY } ExprKind;
 
 typedef struct Expr Expr;
 
@@ -51,7 +51,14 @@ typedef struct Function {
     size_t body_count;
 } Function;
 
+typedef struct TypeAlias {
+    char *name;   /* owned */
+    char *value;  /* owned, e.g. "i32", "qreg<2>" */
+} TypeAlias;
+
 typedef struct Program {
+    TypeAlias *type_aliases;
+    size_t type_alias_count;
     Function *functions;
     size_t function_count;
 } Program;

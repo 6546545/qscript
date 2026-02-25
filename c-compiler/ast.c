@@ -92,6 +92,15 @@ void ast_free_statement(Statement *s) {
 
 void ast_free(Program *program) {
     if (!program) return;
+    if (program->type_aliases) {
+        for (size_t i = 0; i < program->type_alias_count; i++) {
+            free(program->type_aliases[i].name);
+            free(program->type_aliases[i].value);
+        }
+        free(program->type_aliases);
+        program->type_aliases = NULL;
+        program->type_alias_count = 0;
+    }
     for (size_t i = 0; i < program->function_count; i++) {
         Function *f = &program->functions[i];
         free(f->name);

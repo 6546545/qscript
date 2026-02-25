@@ -50,6 +50,20 @@ static const char *scope_lookup(const char *name) {
     return NULL;
 }
 
+/* Resolve type alias for typecheck; returns newly allocated string or NULL. */
+static char *resolve_type(const Program *program, const char *name, int depth) {
+    if (!name) return NULL;
+    if (depth > 8) return strdup(name);
+    if (!program->type_aliases) return strdup(name);
+    for (size_t i = 0; i < program->type_alias_count; i++) {
+        if (program->type_aliases[i].name && strcmp(program->type_aliases[i].name, name) == 0) {
+            char *resolved = resolve_type(program, program->type_aliases[i].value, depth + 1);
+            return resolved ? resolved : strdup(name);
+        }
+    }
+    return strdup(name);
+}
+
 static void scope_clear(void) {
     while (scope_count > 0) scope_pop();
 }
@@ -63,9 +77,11 @@ static int check_expr(const Expr *e) {
             return 0;  /* string type */
         case EXPR_INT:
             return 0;  /* i32 */
+        case EXPR_BOOL:
+            return 0;  /* bool */
         case EXPR_IDENT:
             if (e->value && !scope_lookup(e->value)) {
-                if (strcmp(e->value, "print") == 0 || strcmp(e->value, "print_bits") == 0 ||
+                if (strcmp(e->value, "print") == 0 || strcmp(e->value, "print_int") == 0 || strcmp(e->value, "print_bits") == 0 ||
                     strcmp(e->value, "alloc_qreg<2>") == 0 || strcmp(e->value, "h") == 0 ||
                     strcmp(e->value, "cx") == 0 || strcmp(e->value, "measure_all") == 0 ||
                     strcmp(e->value, "result") == 0)
@@ -100,7 +116,7 @@ static int check_statement(const Statement *s, int in_loop, const char *func_ret
     switch (s->kind) {
         case STMT_CALL:
             if (s->callee && !scope_lookup(s->callee)) {
-                if (strcmp(s->callee, "print") != 0 && strcmp(s->callee, "print_bits") != 0) {
+                if (strcmp(s->callee, "print") != 0 && strcmp(s->callee, "print_int") != 0 && strcmp(s->callee, "print_bits") != 0) {
                     (void)snprintf(typecheck_error, sizeof(typecheck_error),
                         "undefined function '%s'", s->callee);
                     return -1;
@@ -171,10 +187,10 @@ static int check_statement(const Statement *s, int in_loop, const char *func_ret
             if (s->init && check_expr(s->init) != 0) return -1;
             return 0;
         case STMT_RETURN:
-            if (func_return_type && strcmp(func_return_type, "i32") == 0) {
+            if (func_return_type && (strcmp(func_return_type, "i32") == 0 || strcmp(func_return_type, "bool") == 0)) {
                 if (!s->init) {
                     (void)snprintf(typecheck_error, sizeof(typecheck_error),
-                        "function returns i32, return statement must have a value");
+                        "function returns %s, return statement must have a value", func_return_type);
                     return -1;
                 }
             }
@@ -198,7 +214,9 @@ int typecheck(const Program *program) {
     for (size_t i = 0; i < program->function_count; i++) {
         const Function *f = &program->functions[i];
         if (strcmp(f->name, "main") == 0) {
-            has_main = 1;
+            char *ret = resolve_type(program, f->return_type, 0);
+            if (ret && strcmp(ret, "unit") == 0) has_main = 1;
+            free(ret);
             break;
         }
     }
@@ -219,9 +237,15 @@ int typecheck(const Program *program) {
         for (size_t j = 0; j < f->param_count; j++) {
             scope_push(f->params[j].name, f->params[j].type);
         }
+        char *resolved_ret = resolve_type(program, f->return_type, 0);
+        if (!resolved_ret) resolved_ret = strdup(f->return_type ? f->return_type : "unit");
         for (size_t j = 0; j < f->body_count; j++) {
-            if (check_statement(&f->body[j], 0, f->return_type) != 0) return -1;
+            if (check_statement(&f->body[j], 0, resolved_ret) != 0) {
+                free(resolved_ret);
+                return -1;
+            }
         }
+        free(resolved_ret);
     }
     scope_clear();
     return 0;

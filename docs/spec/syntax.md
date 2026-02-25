@@ -37,6 +37,7 @@ fn main() -> unit {
 
 - `let` introduces a new binding.
 - Types are written after `:` and are usually required in v0.1 for clarity.
+- `bool` type with literals `true` and `false`.
 
 ### Conditionals
 
@@ -95,8 +96,10 @@ This syntax is intentionally minimal for v0.1 and will evolve as the language an
 
 The **MVP parser** supports only:
 
+- Comments: `//` line comments and `/* ... */` block comments (skipped by lexer).
+- Type aliases: `type Name = i32;` (or `unit`, `bool`, `qreg<2>`) at top level.
 - Function declarations: `fn name(param: type, ...) -> return_type { ... }` (parameters allowed; `main()` must have no parameters).
-- `if expr { ... } else { ... }` conditionals with comparison expressions (`<`, `>`, `==`, `!=`, `<=`, `>=`).
+- `if expr { ... } else if expr { ... } else { ... }` conditionals with comparison expressions (`<`, `>`, `==`, `!=`, `<=`, `>=`), logical `&&`, `||`, and unary `!`.
 - `let` bindings with optional type annotation: `let x: i32 = 42;`, `let y = x + 1;`, or `let result = measure_all(q);`
 - `return;` or `return expr;` for early exit.
 - `loop { ... }`, `while (cond) { ... }`, `for (init; cond; step) { ... }` with `break;` and `continue;`.
@@ -107,9 +110,8 @@ The **MVP parser** supports only:
 
 ### Future Work (Not in MVP)
 
-- Swarms integration and support (deeper orchestration with compiler/tooling).
 - Pattern matching, `if`/`else` as expressions.
 - (Control flow complete.)
-- `struct` declarations, type aliases.
+- `struct` declarations.
 - Module metadata and imports.
 

@@ -44,6 +44,9 @@ static const char *token_kind_name(TokenKind k) {
         case TOK_ARROW: return "->";
         case TOK_OPERATOR: return "operator";
         case TOK_EOF: return "eof";
+        case TOK_TRUE: return "true";
+        case TOK_FALSE: return "false";
+        case TOK_TYPE: return "type";
         default: return "?";
     }
 }

@@ -11,7 +11,7 @@ typedef struct IrValue {
     char *value; /* owned */
 } IrValue;
 
-typedef enum { IR_NOP, IR_CALL, IR_RET, IR_COND_BR, IR_BR, IR_ALLOCA, IR_STORE, IR_ADD } InstructionKind;
+typedef enum { IR_NOP, IR_CALL, IR_RET, IR_COND_BR, IR_BR, IR_ALLOCA, IR_STORE, IR_ADD, IR_NOT, IR_ICMP } InstructionKind;
 
 typedef struct Instruction {
     InstructionKind kind;

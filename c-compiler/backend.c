@@ -20,7 +20,7 @@ static void escape_llvm_string(const char *s, char *out, size_t out_size) {
 
 static const char *llvm_type_for(const char *ty) {
     if (!ty) return "void";
-    if (strcmp(ty, "i32") == 0) return "i32";
+    if (strcmp(ty, "i32") == 0 || strcmp(ty, "bool") == 0) return "i32";
     if (strcmp(ty, "unit") == 0) return "void";
     return "i8*";  /* string, qreg, etc. as opaque pointer for now */
 }
@@ -114,6 +114,8 @@ void backend_classical_emit(const ModuleIr *module) {
                 else if (inst->kind == IR_ALLOCA) printf("    ; alloca %s\n", inst->callee);
                 else if (inst->kind == IR_STORE) printf("    ; store %s\n", inst->callee);
                 else if (inst->kind == IR_ADD) printf("    ; add %s\n", inst->callee);
+                else if (inst->kind == IR_NOT) printf("    ; not\n");
+                else if (inst->kind == IR_ICMP) printf("    ; icmp %s\n", inst->callee ? inst->callee : "?");
             }
         }
         printf("}\n");
@@ -128,6 +130,7 @@ static void emit_llvm_impl(const ModuleIr *module) {
     fprintf(out, "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n");
     fprintf(out, "declare i32 @printf(i8*, ...)\n");
     fprintf(out, "@.str.fmt = private unnamed_addr constant [4 x i8] c\"%%s\\0A\\00\", align 1\n");
+    fprintf(out, "@.str.fmt.int = private unnamed_addr constant [4 x i8] c\"%%d\\0A\\00\", align 1\n");
 
     /* Collect string constants from all calls (print and user functions) */
     size_t str_cap = 8, str_count = 0;
@@ -208,6 +211,24 @@ static void emit_llvm_impl(const ModuleIr *module) {
                     binop_counter++;
                     continue;
                 }
+                if (inst->kind == IR_NOT && inst->arg_count >= 1 && inst->result_ssa) {
+                    char arg_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], arg_buf, sizeof(arg_buf), &load_counter);
+                    fprintf(out, "  %%not.cmp.%zu = icmp eq i32 %s, 0\n", icmp_counter, arg_buf);
+                    fprintf(out, "  %%%s = zext i1 %%not.cmp.%zu to i32\n", inst->result_ssa, icmp_counter);
+                    icmp_counter++;
+                    continue;
+                }
+                if (inst->kind == IR_ICMP && inst->callee && inst->arg_count >= 2 && inst->result_ssa) {
+                    const char *icmp = llvm_icmp_for(inst->callee);
+                    char left_buf[64], right_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], left_buf, sizeof(left_buf), &load_counter);
+                    emit_i32_operand(out, fir, &inst->args[1], right_buf, sizeof(right_buf), &load_counter);
+                    fprintf(out, "  %%icmp.val.%zu = icmp %s i32 %s, %s\n", icmp_counter, icmp, left_buf, right_buf);
+                    fprintf(out, "  %%%s = zext i1 %%icmp.val.%zu to i32\n", inst->result_ssa, icmp_counter);
+                    icmp_counter++;
+                    continue;
+                }
                 if (inst->kind == IR_STORE && inst->callee && inst->arg_count >= 1) {
                     char val_buf[64];
                     emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
@@ -248,7 +269,14 @@ static void emit_llvm_impl(const ModuleIr *module) {
                     fprintf(out, "  %%str.ptr = getelementptr inbounds ([%zu x i8], [%zu x i8]* @.str.%zu, i64 0, i64 0)\n", n, n, idx);
                     fprintf(out, "  %%fmt.ptr = getelementptr inbounds ([4 x i8], [4 x i8]* @.str.fmt, i64 0, i64 0)\n");
                     fprintf(out, "  %%1 = call i32 @printf(i8* %%fmt.ptr, i8* %%str.ptr)\n");
-                } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print") != 0) {
+                } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print_int") == 0
+                           && inst->arg_count == 1) {
+                    char val_buf[64];
+                    emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
+                    fprintf(out, "  %%fmt.int.ptr = getelementptr inbounds ([4 x i8], [4 x i8]* @.str.fmt.int, i64 0, i64 0)\n");
+                    fprintf(out, "  %%2 = call i32 @printf(i8* %%fmt.int.ptr, i32 %s)\n", val_buf);
+                } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print") != 0
+                           && strcmp(inst->callee, "print_int") != 0) {
                     int is_in_module = 0;
                     size_t callee_fi = 0;
                     for (size_t fi = 0; fi < module->function_count; fi++) {

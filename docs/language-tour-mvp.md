@@ -11,7 +11,8 @@ fn main() -> unit {
 ```
 
 - **`fn main() -> unit`**: Function named `main` with no parameters, returning `unit` (void).
-- **`print("Hello, world!")`**: Built-in function that prints a string to stdout.
+- **`print("Hello, world!")`**: Built-in that prints a string to stdout.
+- **`print_int(n)`**: Built-in that prints an integer to stdout.
 - Every program must define `main() -> unit` as the entry point.
 
 **Compile and run**:
@@ -125,7 +126,7 @@ fn main() -> unit {
 }
 ```
 
-- **`if expr { ... } else { ... }`**: Conditional with comparison. Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`.
+- **`if expr { ... } else if expr { ... } else { ... }`**: Conditional with comparison. Supported operators: `<`, `>`, `<=`, `>=`, `==`, `!=`, logical `&&`, `||`, and unary `!`.
 - Variables from `let` bindings can be used in conditions and function calls.
 
 ---
@@ -165,21 +166,41 @@ fn main() -> unit {
 
 ---
 
+## Bool Type
+
+```qs
+fn main() -> unit {
+    let a: bool = true;
+    let b: bool = false;
+    if (a && !b) {
+        print_int(1);
+    }
+}
+```
+
+- **`bool`**: Boolean type. Represented as `i32` (0 or 1) in the backend.
+- **`true`**, **`false`**: Boolean literals.
+- **`let x: bool = true`**: Variables can be explicitly typed as `bool`.
+- **`let c: bool = 1 < 2`**: Comparisons produce a value (0 or 1), so they can be assigned to `bool` or used in expressions.
+- **`if (a)`**: Bool variables can be used directly in conditions.
+
+---
+
 ## MVP Syntax Summary
 
 | Construct | Example |
 |-----------|---------|
 | Function | `fn name() -> unit { ... }` or `fn name(x: i32, y: i32) -> unit { ... }` |
 | Let + arithmetic | `let x = 1 + 2;` |
-| Conditional | `if a < b { ... } else { ... }` |
+| Conditional | `if a < b { ... } else { ... }` (supports `&&`, `||`, `!`) |
 | Loop | `loop { ... break; }` |
 | Assignment | `x = expr;` |
 | Return | `return;` or `return expr;` (for `-> i32`) |
 | Let binding | `let x = expr;` or `let x: type = expr;` |
 | Quantum block | `quantum { ... }` |
-| Call | `print("hi");` |
+| Call | `print("hi");` or `print_int(x);` |
 | Index | `q[0]` |
-| Types | `unit`, `i32`, `qreg<2>` |
+| Types | `unit`, `i32`, `bool`, `qreg<2>` |
 
 ---
 

@@ -9,6 +9,9 @@ static IrValue expr_to_ir_value(const Expr *e) {
     if (e->kind == EXPR_INT && e->value) {
         v.kind = IR_VAL_INT;
         v.value = strdup(e->value);
+    } else if (e->kind == EXPR_BOOL && e->value) {
+        v.kind = IR_VAL_INT;
+        v.value = strdup(e->value);
     } else if (e->kind == EXPR_IDENT && e->value) {
         v.kind = IR_VAL_INT;
         v.value = strdup(e->value);
@@ -142,6 +145,7 @@ static void bb_start_block(BlockBuilder *bb, const char *name) {
 
 static int lower_stmt_to_ir(const Statement *s, BlockBuilder *bb, const Program *program,
                             size_t func_idx, size_t stmt_start, size_t stmt_end);
+static int is_comparison_op(const char *op);
 
 /* Returns 0=ok, 1=saw return (stop), -1=error */
 static int lower_stmts_to_ir(const Statement *stmts, size_t count, BlockBuilder *bb,
@@ -161,12 +165,39 @@ static int eval_expr_to_value(const Expr *e, BlockBuilder *bb, const Program *pr
                               size_t func_idx, IrValue *out) {
     if (!e || !out) return -1;
     memset(out, 0, sizeof(IrValue));
-    if (e->kind == EXPR_INT || e->kind == EXPR_IDENT || e->kind == EXPR_STR) {
+    if (e->kind == EXPR_INT || e->kind == EXPR_BOOL || e->kind == EXPR_IDENT || e->kind == EXPR_STR) {
         *out = expr_to_ir_value(e);
         if (!out->value) out->value = strdup("0");
         return out->value ? 0 : -1;
     }
-    if (e->kind == EXPR_BINARY && e->value && e->base && e->right) {
+    if (e->kind == EXPR_BINARY && e->value && e->base) {
+        if (strcmp(e->value, "!") == 0 && !e->right) {
+            /* Unary !: 0 if operand non-zero, 1 if operand zero */
+            IrValue arg;
+            if (eval_expr_to_value(e->base, bb, program, func_idx, &arg) != 0) return -1;
+            if (!arg.value) arg.value = strdup("0");
+            if (!arg.value) return -1;
+            char ssa_name[32];
+            (void)snprintf(ssa_name, sizeof(ssa_name), "not.%lu", (unsigned long)bb->add_counter);
+            bb->add_counter++;
+            Instruction not_inst = { 0 };
+            not_inst.kind = IR_NOT;
+            not_inst.arg_count = 1;
+            not_inst.args = (IrValue *)malloc(sizeof(IrValue));
+            not_inst.result_ssa = strdup(ssa_name);
+            if (!not_inst.args || !not_inst.result_ssa) {
+                free(arg.value);
+                free(not_inst.args);
+                free(not_inst.result_ssa);
+                return -1;
+            }
+            not_inst.args[0] = arg;
+            if (bb_add_inst(bb, &not_inst) != 0) return -1;
+            out->kind = IR_VAL_SSA;
+            out->value = strdup(ssa_name);
+            return out->value ? 0 : -1;
+        }
+        if (!e->right) return -1;
         IrValue left_val, right_val;
         if (eval_expr_to_value(e->base, bb, program, func_idx, &left_val) != 0) return -1;
         if (eval_expr_to_value(e->right, bb, program, func_idx, &right_val) != 0) {
@@ -181,6 +212,30 @@ static int eval_expr_to_value(const Expr *e, BlockBuilder *bb, const Program *pr
             return -1;
         }
         const char *op = e->value;
+        if (is_comparison_op(op)) {
+            /* Comparison as value: produce i32 0 or 1 */
+            char ssa_name[32];
+            (void)snprintf(ssa_name, sizeof(ssa_name), "icmp.%lu", (unsigned long)bb->add_counter);
+            bb->add_counter++;
+            Instruction icmp_inst = { 0 };
+            icmp_inst.kind = IR_ICMP;
+            icmp_inst.callee = strdup(op);
+            icmp_inst.arg_count = 2;
+            icmp_inst.args = (IrValue *)malloc(2 * sizeof(IrValue));
+            icmp_inst.result_ssa = strdup(ssa_name);
+            if (!icmp_inst.callee || !icmp_inst.args || !icmp_inst.result_ssa) {
+                free(left_val.value);
+                free(right_val.value);
+                free_instruction(&icmp_inst);
+                return -1;
+            }
+            icmp_inst.args[0] = left_val;
+            icmp_inst.args[1] = right_val;
+            if (bb_add_inst(bb, &icmp_inst) != 0) return -1;
+            out->kind = IR_VAL_SSA;
+            out->value = strdup(ssa_name);
+            return out->value ? 0 : -1;
+        }
         if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 || strcmp(op, "*") == 0 ||
             strcmp(op, "/") == 0 || strcmp(op, "%") == 0) {
             char ssa_name[32];
@@ -210,7 +265,8 @@ static int eval_expr_to_value(const Expr *e, BlockBuilder *bb, const Program *pr
         const char *callee = e->base->value;
         for (size_t fi = 0; fi < program->function_count; fi++) {
             if (strcmp(program->functions[fi].name, callee) == 0 &&
-                program->functions[fi].return_type && strcmp(program->functions[fi].return_type, "i32") == 0) {
+                program->functions[fi].return_type &&
+                (strcmp(program->functions[fi].return_type, "i32") == 0 || strcmp(program->functions[fi].return_type, "bool") == 0)) {
                 /* Emit call that produces i32 result */
                 size_t ac = e->arg_count;
                 Instruction call_inst = { 0 };
@@ -259,6 +315,86 @@ static int add_local(BlockBuilder *bb, const char *name) {
     }
     bb->locals[bb->local_count++] = strdup(name);
     return bb->locals[bb->local_count - 1] ? 0 : -1;
+}
+
+static int is_comparison_op(const char *op) {
+    return op && (strcmp(op, "<") == 0 || strcmp(op, ">") == 0 || strcmp(op, "<=") == 0 ||
+                  strcmp(op, ">=") == 0 || strcmp(op, "==") == 0 || strcmp(op, "!=") == 0);
+}
+
+/* Emit condition to IR with short-circuit for && and ||. Branches: true->then_name, false->else_name. */
+static int emit_cond_to_ir(const Expr *cond, const char *then_name, const char *else_name,
+                           BlockBuilder *bb, const Program *program, size_t func_idx) {
+    if (!cond) return -1;
+    if (cond->kind == EXPR_BINARY && cond->value) {
+        if (strcmp(cond->value, "!") == 0 && cond->base) {
+            /* !expr: swap then and else */
+            return emit_cond_to_ir(cond->base, else_name, then_name, bb, program, func_idx);
+        }
+        if (strcmp(cond->value, "&&") == 0) {
+            /* left && right: if !left goto else; if !right goto else; goto then */
+            char and_right[32];
+            (void)snprintf(and_right, sizeof(and_right), "and.%lu", (unsigned long)bb->if_counter);
+            if (emit_cond_to_ir(cond->base, and_right, else_name, bb, program, func_idx) != 0) return -1;
+            bb_start_block(bb, and_right);
+            return emit_cond_to_ir(cond->right, then_name, else_name, bb, program, func_idx);
+        }
+        if (strcmp(cond->value, "||") == 0) {
+            /* left || right: if left goto then; if right goto then; goto else */
+            char or_right[32];
+            (void)snprintf(or_right, sizeof(or_right), "or.%lu", (unsigned long)bb->if_counter);
+            if (emit_cond_to_ir(cond->base, then_name, or_right, bb, program, func_idx) != 0) return -1;
+            bb_start_block(bb, or_right);
+            return emit_cond_to_ir(cond->right, then_name, else_name, bb, program, func_idx);
+        }
+        if (is_comparison_op(cond->value) && cond->base && cond->right) {
+            IrValue left = expr_to_ir_value(cond->base);
+            IrValue right = expr_to_ir_value(cond->right);
+            if (!left.value) left.value = strdup("0");
+            if (!right.value) right.value = strdup("0");
+            if (!left.value || !right.value) {
+                free(left.value);
+                free(right.value);
+                return -1;
+            }
+            Instruction cond_br = { 0 };
+            cond_br.kind = IR_COND_BR;
+            cond_br.callee = strdup(cond->value);
+            cond_br.arg_count = 2;
+            cond_br.args = (IrValue *)malloc(2 * sizeof(IrValue));
+            cond_br.args[0] = left;
+            cond_br.args[1] = right;
+            cond_br.block_target = strdup(then_name);
+            cond_br.block_target_else = strdup(else_name);
+            if (!cond_br.callee || !cond_br.args || !cond_br.block_target || !cond_br.block_target_else) {
+                free_instruction(&cond_br);
+                return -1;
+            }
+            return bb_add_inst(bb, &cond_br);
+        }
+    }
+    /* Bare value or arithmetic: evaluate and treat as value != 0 */
+    IrValue left, right = { IR_VAL_INT, strdup("0") };
+    if (!right.value) return -1;
+    if (eval_expr_to_value(cond, bb, program, func_idx, &left) != 0) {
+        free(right.value);
+        return -1;
+    }
+    if (!left.value) left.value = strdup("0");
+    Instruction cond_br = { 0 };
+    cond_br.kind = IR_COND_BR;
+    cond_br.callee = strdup("!=");
+    cond_br.arg_count = 2;
+    cond_br.args = (IrValue *)malloc(2 * sizeof(IrValue));
+    cond_br.args[0] = left;
+    cond_br.args[1] = right;
+    cond_br.block_target = strdup(then_name);
+    cond_br.block_target_else = strdup(else_name);
+    if (!cond_br.callee || !cond_br.args || !cond_br.block_target || !cond_br.block_target_else) {
+        free_instruction(&cond_br);
+        return -1;
+    }
+    return bb_add_inst(bb, &cond_br);
 }
 
 /* Returns 0=ok, 1=saw return (caller should stop), -1=error */
@@ -338,9 +474,10 @@ static int lower_stmt_to_ir(const Statement *s, BlockBuilder *bb, const Program 
     }
     if (s->kind == STMT_WHILE && s->init) {
         /* while (cond) { body } => loop { if !cond break; body } */
-        char loop_head[32], loop_exit[32];
+        char loop_head[32], loop_exit[32], cond_then[32];
         (void)snprintf(loop_head, sizeof(loop_head), "while.%lu", (unsigned long)bb->loop_counter);
         (void)snprintf(loop_exit, sizeof(loop_exit), "while_exit.%lu", (unsigned long)bb->loop_counter);
+        (void)snprintf(cond_then, sizeof(cond_then), "while_body.%lu", (unsigned long)bb->if_counter);
         bb->loop_counter++;
         Instruction br_to_loop = { 0 };
         br_to_loop.kind = IR_BR;
@@ -348,26 +485,7 @@ static int lower_stmt_to_ir(const Statement *s, BlockBuilder *bb, const Program 
         if (!br_to_loop.block_target) return -1;
         if (bb_add_inst(bb, &br_to_loop) != 0) return -1;
         bb_start_block(bb, loop_head);
-        if (s->init->kind != EXPR_BINARY) return -1;
-        IrValue left = expr_to_ir_value(s->init->base);
-        IrValue right = expr_to_ir_value(s->init->right);
-        if (!left.value) left.value = strdup("0");
-        if (!right.value) right.value = strdup("0");
-        if (!left.value || !right.value) return -1;
-        char cond_then[32], cond_else[32];
-        (void)snprintf(cond_then, sizeof(cond_then), "while_body.%lu", (unsigned long)bb->if_counter);
-        (void)snprintf(cond_else, sizeof(cond_else), "while_exit.%lu", (unsigned long)bb->loop_counter);
-        Instruction cond_br = { 0 };
-        cond_br.kind = IR_COND_BR;
-        cond_br.callee = strdup(s->init->value ? s->init->value : "<");
-        cond_br.arg_count = 2;
-        cond_br.args = (IrValue *)malloc(2 * sizeof(IrValue));
-        cond_br.block_target = strdup(cond_then);
-        cond_br.block_target_else = strdup(loop_exit);
-        cond_br.args[0] = left;
-        cond_br.args[1] = right;
-        if (!cond_br.callee || !cond_br.args || !cond_br.block_target || !cond_br.block_target_else) return -1;
-        if (bb_add_inst(bb, &cond_br) != 0) return -1;
+        if (emit_cond_to_ir(s->init, cond_then, loop_exit, bb, program, func_idx) != 0) return -1;
         bb_start_block(bb, cond_then);
         char *saved_break = bb->break_target;
         char *saved_continue = bb->continue_target;
@@ -407,28 +525,11 @@ static int lower_stmt_to_ir(const Statement *s, BlockBuilder *bb, const Program 
         if (!br_to_loop.block_target) return -1;
         if (bb_add_inst(bb, &br_to_loop) != 0) return -1;
         bb_start_block(bb, loop_head);
-        if (s->init && s->init->kind == EXPR_BINARY) {
-            IrValue left = expr_to_ir_value(s->init->base);
-            IrValue right = expr_to_ir_value(s->init->right);
-            if (!left.value) left.value = strdup("0");
-            if (!right.value) right.value = strdup("0");
-            if (left.value && right.value) {
-                char cond_then[32];
-                (void)snprintf(cond_then, sizeof(cond_then), "for_body.%lu", (unsigned long)bb->if_counter);
-                Instruction cond_br = { 0 };
-                cond_br.kind = IR_COND_BR;
-                cond_br.callee = strdup(s->init->value ? s->init->value : "<");
-                cond_br.arg_count = 2;
-                cond_br.args = (IrValue *)malloc(2 * sizeof(IrValue));
-                cond_br.block_target = strdup(cond_then);
-                cond_br.block_target_else = strdup(loop_exit);
-                cond_br.args[0] = left;
-                cond_br.args[1] = right;
-                if (cond_br.callee && cond_br.args && cond_br.block_target && cond_br.block_target_else &&
-                    bb_add_inst(bb, &cond_br) == 0) {
-                    bb_start_block(bb, cond_then);
-                }
-            }
+        if (s->init) {
+            char cond_then[32];
+            (void)snprintf(cond_then, sizeof(cond_then), "for_body.%lu", (unsigned long)bb->if_counter);
+            if (emit_cond_to_ir(s->init, cond_then, loop_exit, bb, program, func_idx) != 0) return -1;
+            bb_start_block(bb, cond_then);
         }
         char *saved_break = bb->break_target;
         char *saved_continue = bb->continue_target;
@@ -501,37 +602,16 @@ static int lower_stmt_to_ir(const Statement *s, BlockBuilder *bb, const Program 
         return 0;
     }
     if (s->kind == STMT_IF) {
-        if (!s->init || s->init->kind != EXPR_BINARY) return -1;
+        if (!s->init) return -1;
         const Expr *cond = s->init;
-        IrValue left = expr_to_ir_value(cond->base);
-        IrValue right = expr_to_ir_value(cond->right);
-        if (!left.value) left.value = strdup("0");
-        if (!right.value) right.value = strdup("0");
-        if (!left.value || !right.value) {
-            free(left.value);
-            free(right.value);
-            return -1;
-        }
         char then_name[32], else_name[32], merge_name[32];
         (void)snprintf(then_name, sizeof(then_name), "then.%lu", (unsigned long)bb->if_counter);
         (void)snprintf(else_name, sizeof(else_name), "else.%lu", (unsigned long)bb->if_counter);
         (void)snprintf(merge_name, sizeof(merge_name), "merge.%lu", (unsigned long)bb->if_counter);
         bb->if_counter++;
 
-        Instruction cond_br = { 0 };
-        cond_br.kind = IR_COND_BR;
-        cond_br.callee = strdup(cond->value ? cond->value : "<");
-        cond_br.arg_count = 2;
-        cond_br.args = (IrValue *)malloc(2 * sizeof(IrValue));
-        cond_br.args[0] = left;
-        cond_br.args[1] = right;
-        cond_br.block_target = strdup(then_name);
-        cond_br.block_target_else = strdup(else_name);
-        if (!cond_br.callee || !cond_br.args || !cond_br.block_target || !cond_br.block_target_else) {
-            free_instruction(&cond_br);
-            return -1;
-        }
-        if (bb_add_inst(bb, &cond_br) != 0) return -1;
+        /* Emit condition: supports comparison, &&, || */
+        if (emit_cond_to_ir(cond, then_name, else_name, bb, program, func_idx) != 0) return -1;
 
         bb_start_block(bb, then_name);
         int then_ret = lower_stmts_to_ir(s->body, s->body_count, bb, program, func_idx);
@@ -759,6 +839,20 @@ fail:
     return -1;
 }
 
+/* Resolve type alias; returns newly allocated string or NULL. Depth limits recursion. */
+static char *resolve_type(const Program *program, const char *name, int depth) {
+    if (!name) return NULL;
+    if (depth > 8) return strdup(name);
+    if (!program->type_aliases) return strdup(name);
+    for (size_t i = 0; i < program->type_alias_count; i++) {
+        if (program->type_aliases[i].name && strcmp(program->type_aliases[i].name, name) == 0) {
+            char *resolved = resolve_type(program, program->type_aliases[i].value, depth + 1);
+            return resolved ? resolved : strdup(name);
+        }
+    }
+    return strdup(name);
+}
+
 ModuleIr *lower_to_ir(const Program *program) {
     ModuleIr *m = (ModuleIr *)malloc(sizeof(ModuleIr));
     if (!m) return NULL;
@@ -771,7 +865,8 @@ ModuleIr *lower_to_ir(const Program *program) {
         FunctionIr *fir = &m->functions[i];
         fir->name = strdup(f->name);
         if (!fir->name) goto fail;
-        fir->return_type = f->return_type ? strdup(f->return_type) : strdup("unit");
+        fir->return_type = resolve_type(program, f->return_type, 0);
+        if (!fir->return_type) fir->return_type = strdup("unit");
         if (!fir->return_type) goto fail;
         fir->param_count = f->param_count;
         fir->params = NULL;
@@ -780,7 +875,8 @@ ModuleIr *lower_to_ir(const Program *program) {
             if (!fir->params) goto fail;
             for (size_t p = 0; p < f->param_count; p++) {
                 fir->params[p].name = strdup(f->params[p].name);
-                fir->params[p].type = strdup(f->params[p].type);
+                fir->params[p].type = resolve_type(program, f->params[p].type, 0);
+                if (!fir->params[p].type) fir->params[p].type = strdup(f->params[p].type);
                 if (!fir->params[p].name || !fir->params[p].type) {
                     for (size_t q = 0; q <= p; q++) {
                         free(fir->params[q].name);
