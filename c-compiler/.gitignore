@@ -5,3 +5,7 @@ tools/
 qlangc.exe
 qlangc
 *.o
+a.out
+hello
+hello.exe
+*.qasm

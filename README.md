@@ -13,7 +13,7 @@ QScript is an experimental **low-level yet readable programming language** desig
 - **Backends**:
   - Classical: SSA-style IR lowered to **LLVM IR**; compiles to native via Clang.
   - Quantum: Emits **OpenQASM 2.0** for quantum circuits (e.g., Bell pair).
-- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/else_if.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`, `examples/print_int.qs`, `examples/logical_and_or.qs`, `examples/bool_type.qs`, `examples/type_alias.qs`, `examples/unary_minus.qs`, `examples/hex_and_escapes.qs`.
+- **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/else_if.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`, `examples/print_int.qs`, `examples/logical_and_or.qs`, `examples/bool_type.qs`, `examples/type_alias.qs`, `examples/unary_minus.qs`, `examples/hex_and_escapes.qs`, `examples/parentheses.qs`, `examples/parentheses_simple.qs`.
 - **Swarms**: Optional Python workflows in `orchestration/` for spec drafting and example generation.
 
 ### Quickstart

@@ -34,6 +34,14 @@ This page summarizes what works in the **Minimal Viable Product (MVP)** release.
 - (All planned control flow implemented.)
 - (Quantum backend from IR implemented.)
 
+## Release checklist
+
+Before publishing (e.g. tagging `v0.1.0` or creating a GitHub Release):
+
+1. Build the compiler with no warnings: `make` (Unix) or `.\build.ps1` (Windows) in `c-compiler/`.
+2. Run the sanity test from project root: `./scripts/run_tests.sh` (Unix) or `.\scripts\run_tests.ps1` (Windows).
+3. Optionally: compile and run a few more examples (e.g. `arithmetic.qs`, `parentheses.qs`) and run `qlangc --qasm -o bell.qasm examples/bell_pair.qs` to verify the quantum backend.
+
 ## Build and Run
 
 See `README.md` for quickstart. In brief:

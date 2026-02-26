@@ -362,8 +362,6 @@ static void emit_qasm_impl(const ModuleIr *module, FILE *out) {
     if (total_qubits == 0) total_qubits = 1;
     fprintf(f, "qreg q[%zu];\n", total_qubits);
     fprintf(f, "creg c[%zu];\n", total_qubits);
-    /* Map register names to QASM qubit indices (simple: first alloc gets 0..n-1, etc.) */
-    size_t next_idx = 0;
     for (size_t k = 0; k < qfn->quantum_op_count; k++) {
         const QuantumOp *qop = &qfn->quantum_ops[k];
         if (qop->kind == QOP_H && qop->reg_name) {
