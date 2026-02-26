@@ -97,7 +97,8 @@ This syntax is intentionally minimal for v0.1 and will evolve as the language an
 The **MVP parser** supports only:
 
 - Comments: `//` line comments and `/* ... */` block comments (skipped by lexer).
-- Integer literals: decimal and hex (`0x`, `0X`). String literals: escape sequences `\n`, `\t`, `\r`, `\"`, `\\`.
+- Integer literals: decimal, hex (`0x`, `0X`), binary (`0b`, `0B`), octal (`0o`, `0O`). String literals: escape sequences `\n`, `\t`, `\r`, `\"`, `\\`.
+- Parenthesized expressions: `( expr )` for grouping (e.g. `(1 + 2) * 3`).
 - Type aliases: `type Name = i32;` (or `unit`, `bool`, `qreg<2>`) at top level.
 - Function declarations: `fn name(param: type, ...) -> return_type { ... }` (parameters allowed; `main()` must have no parameters).
 - `if expr { ... } else if expr { ... } else { ... }` conditionals with comparison expressions (`<`, `>`, `==`, `!=`, `<=`, `>=`), logical `&&`, `||`, and unary `!`.

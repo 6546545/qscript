@@ -56,11 +56,21 @@ static const char *binary_op_value(const Token *tokens, size_t i) {
     return t->value ? t->value : "?";
 }
 
-/* Parse primary: string | int | ident | ident<integer> */
+/* Parse primary: ( expr ) | string | int | ident | ident<integer> */
 static int parse_primary(const Token *tokens, size_t token_count, size_t *i, Expr *e) {
     if (*i >= token_count) return 0;
     const Token *t = &tokens[*i];
     memset(e, 0, sizeof(Expr));
+    if (t->kind == TOK_LPAREN) {
+        (*i)++;
+        if (!parse_expr(tokens, token_count, i, e)) return 0;
+        if (!consume(tokens, token_count, i, TOK_RPAREN)) {
+            ast_free_expr(e);
+            set_error("expected ')' after expression");
+            return 0;
+        }
+        return 1;
+    }
     if (t->kind == TOK_STRING_LITERAL && t->value) {
         e->kind = EXPR_STR;
         e->value = strdup(t->value);

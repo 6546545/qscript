@@ -42,10 +42,12 @@ static void scope_pop(void) {
     free(scope[scope_count].type);
 }
 
+/* Returns type string if variable is in scope; NULL if not found.
+ * For unannotated lets (type stored as NULL) returns "i32" so variable is considered defined. */
 static const char *scope_lookup(const char *name) {
     for (size_t i = scope_count; i > 0; i--) {
         if (scope[i - 1].name && strcmp(scope[i - 1].name, name) == 0)
-            return scope[i - 1].type;
+            return scope[i - 1].type ? scope[i - 1].type : "i32";
     }
     return NULL;
 }
@@ -62,6 +64,19 @@ static char *resolve_type(const Program *program, const char *name, int depth) {
         }
     }
     return strdup(name);
+}
+
+/* Return 1 if resolved type is a valid concrete type (i32, unit, bool, qreg<N>). */
+static int is_valid_concrete_type(const char *resolved) {
+    if (!resolved) return 0;
+    if (strcmp(resolved, "i32") == 0 || strcmp(resolved, "unit") == 0 || strcmp(resolved, "bool") == 0)
+        return 1;
+    if (strncmp(resolved, "qreg<", 5) != 0) return 0;
+    size_t len = strlen(resolved);
+    if (len < 7 || resolved[len - 1] != '>') return 0;
+    for (size_t i = 5; i < len - 1; i++)
+        if (resolved[i] < '0' || resolved[i] > '9') return 0;
+    return 1;
 }
 
 static void scope_clear(void) {
@@ -208,6 +223,31 @@ int typecheck(const Program *program) {
     if (!program || program->function_count == 0) {
         (void)snprintf(typecheck_error, sizeof(typecheck_error), "empty program");
         return -1;
+    }
+
+    /* Validate type aliases: no duplicate names, RHS must resolve to a valid concrete type */
+    if (program->type_aliases) {
+        for (size_t i = 0; i < program->type_alias_count; i++) {
+            const char *name = program->type_aliases[i].name;
+            if (!name) continue;
+            for (size_t j = 0; j < i; j++) {
+                if (program->type_aliases[j].name && strcmp(program->type_aliases[j].name, name) == 0) {
+                    (void)snprintf(typecheck_error, sizeof(typecheck_error),
+                        "duplicate type alias '%s'", name);
+                    return -1;
+                }
+            }
+            char *resolved = resolve_type(program, program->type_aliases[i].value, 0);
+            if (resolved) {
+                if (!is_valid_concrete_type(resolved)) {
+                    (void)snprintf(typecheck_error, sizeof(typecheck_error),
+                        "unknown type in alias '%s': '%s'", name, program->type_aliases[i].value);
+                    free(resolved);
+                    return -1;
+                }
+                free(resolved);
+            }
+        }
     }
 
     int has_main = 0;

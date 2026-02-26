@@ -50,7 +50,7 @@ clang -x ir out.ll -o hello
 
 ### MVP Limitations
 
-- Types: `unit`, `i32`, `bool`, `qreg<2>`; type aliases: `type Foo = i32;`. Comments: `//` and `/* */`. Hex literals: `0x1a`. String escapes: `\n`, `\t`, `\"`, `\\`.
+- Types: `unit`, `i32`, `bool`, `qreg<2>`; type aliases: `type Foo = i32;`. Comments: `//` and `/* */`. Integer literals: decimal, hex (`0x1a`), binary (`0b1010`), octal (`0o77`). String escapes: `\n`, `\t`, `\"`, `\\`.
 - `main()` must have no parameters; other functions may have parameters.
 - `if`/`else`/`else if` supported (comparison conditions, `&&`, `||`, `!`).
 - `let` bindings with variables usable in conditions and calls; arithmetic (`+`, `-`, `*`, `/`, `%`) and unary minus (`-1`, `-x`) in init.
@@ -90,11 +90,25 @@ python scripts/swarm.py dx "undefined variable x"     # Improve error messages
 
 See `orchestration/README.md` for details.
 
+### Quick test
+
+From project root, build and run the hello_world example:
+
+```powershell
+# Windows
+.\scripts\run_tests.ps1
+```
+
+```bash
+# Linux / macOS
+./scripts/run_tests.sh
+```
+
 ### Repository Layout
 
 - `c-compiler/` – Compiler implementation (lexer, parser, AST, typechecker, IR, classical and quantum backends).
 - `docs/` – Specs, design docs, MVP status, language tour.
 - `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`, `arithmetic.qs`, `loop.qs`, `return_value.qs`, `assignment.qs`, and others.
 - `orchestration/` – Swarms workflows.
-- `scripts/` – `run_qasm.py` for running emitted QASM on a simulator.
+- `scripts/` – `run_qasm.py` (QASM simulator), `run_tests.ps1` / `run_tests.sh` (build and sanity test).
 

@@ -118,6 +118,32 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
                 if (!value) goto fail;
                 Token t = { TOK_INTEGER_LITERAL, value };
                 if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            } else if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B')) {
+                p += 2;
+                if (!*p || (*p != '0' && *p != '1')) goto fail;
+                while (*p == '0' || *p == '1') {
+                    num = num * 2 + (unsigned long long)(*p - '0');
+                    p++;
+                }
+                char dec[32];
+                (void)snprintf(dec, sizeof(dec), "%llu", num);
+                char *value = strdup(dec);
+                if (!value) goto fail;
+                Token t = { TOK_INTEGER_LITERAL, value };
+                if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            } else if (p[0] == '0' && (p[1] == 'o' || p[1] == 'O')) {
+                p += 2;
+                if (!*p || *p < '0' || *p > '7') goto fail;
+                while (*p >= '0' && *p <= '7') {
+                    num = num * 8 + (unsigned long long)(*p - '0');
+                    p++;
+                }
+                char dec[32];
+                (void)snprintf(dec, sizeof(dec), "%llu", num);
+                char *value = strdup(dec);
+                if (!value) goto fail;
+                Token t = { TOK_INTEGER_LITERAL, value };
+                if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             } else {
                 while (isdigit((unsigned char)*p)) p++;
                 char *value = strndup(start, (size_t)(p - start));
