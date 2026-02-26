@@ -29,3 +29,7 @@ gcc -std=c11 -Wall -o qlangc.exe main.c lexer.c ast.c parser.c typecheck.c ir.c 
 **Options:** `--tokens` (dump tokens), `--llvm` (emit LLVM IR; pipe to clang to get an executable), `--qasm` (emit OpenQASM 2.0 for quantum programs).
 
 You need a C compiler on PATH (e.g. [MinGW-w64](https://www.mingw-w64.org/) or [MSYS2](https://www.msys2.org/) for `gcc`, or Visual Studio for `cl`).
+
+**Clang for native binary output:** The `-o <binary>` option emits LLVM IR and invokes `clang` to produce an executable. If clang is not on PATH:
+- **Quick:** `winget install LLVM.LLVM` (adds to PATH)
+- **Portable:** `.\download-clang.ps1` (downloads to `tools/clang`; add `tools\clang\bin` to PATH)

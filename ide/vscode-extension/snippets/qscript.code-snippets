@@ -1,0 +1,125 @@
+{
+  "Main function": {
+    "prefix": "main",
+    "body": [
+      "fn main() -> unit {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Main entry point"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:params}) -> ${3:unit} {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Function declaration"
+  },
+  "Let binding": {
+    "prefix": "let",
+    "body": [
+      "let ${1:x}: ${2:i32} = ${3:0};",
+      "$0"
+    ],
+    "description": "Let binding with type"
+  },
+  "Let binding (inferred)": {
+    "prefix": "leti",
+    "body": [
+      "let ${1:x} = ${2:0};",
+      "$0"
+    ],
+    "description": "Let binding without type"
+  },
+  "If statement": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "If conditional"
+  },
+  "If-else": {
+    "prefix": "ife",
+    "body": [
+      "if (${1:condition}) {",
+      "\t$2",
+      "} else {",
+      "\t$0",
+      "}"
+    ],
+    "description": "If-else conditional"
+  },
+  "Loop": {
+    "prefix": "loop",
+    "body": [
+      "loop {",
+      "\t$0",
+      "}"
+    ],
+    "description": "Infinite loop"
+  },
+  "While loop": {
+    "prefix": "while",
+    "body": [
+      "while (${1:condition}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "While loop"
+  },
+  "For loop": {
+    "prefix": "for",
+    "body": [
+      "for (${1:let i = 0}; ${2:i < n}; ${3:i = i + 1}) {",
+      "\t$0",
+      "}"
+    ],
+    "description": "For loop"
+  },
+  "Quantum block": {
+    "prefix": "quantum",
+    "body": [
+      "quantum {",
+      "\tlet ${1:q}: qreg<2> = alloc_qreg<2>();",
+      "\t$0",
+      "}"
+    ],
+    "description": "Quantum block"
+  },
+  "Return": {
+    "prefix": "return",
+    "body": [
+      "return $1;",
+      "$0"
+    ],
+    "description": "Return statement"
+  },
+  "Print": {
+    "prefix": "print",
+    "body": [
+      "print(\"${1:Hello}\");",
+      "$0"
+    ],
+    "description": "Print string"
+  },
+  "Print int": {
+    "prefix": "print_int",
+    "body": [
+      "print_int(${1:x});",
+      "$0"
+    ],
+    "description": "Print integer"
+  },
+  "Type alias": {
+    "prefix": "type",
+    "body": [
+      "type ${1:Name} = ${2:i32};",
+      "$0"
+    ],
+    "description": "Type alias"
+  }
+}

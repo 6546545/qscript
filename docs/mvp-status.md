@@ -9,6 +9,7 @@ This page summarizes what works in the **Minimal Viable Product (MVP)** release.
 - **Classical backend**: Compiles `hello_world.qs` to native executable (via C emission or LLVM IR).
 - **Quantum backend**: Emits OpenQASM for `bell_pair.qs`; documented simulator workflow.
 - **Examples**: `examples/hello_world.qs`, `examples/bell_pair.qs`, `examples/greet.qs`, `examples/conditional.qs`, `examples/else_if.qs`, `examples/arithmetic.qs`, `examples/loop.qs`, `examples/return_value.qs`, `examples/assignment.qs`, `examples/for_loop.qs`, `examples/while_loop.qs`, `examples/print_int.qs`, `examples/logical_and_or.qs`, `examples/bool_type.qs`, `examples/type_alias.qs`, `examples/unary_minus.qs`, `examples/hex_and_escapes.qs`, `examples/parentheses.qs`, `examples/parentheses_simple.qs`.
+- **IDE**: VS Code extension in `ide/vscode-extension/` (syntax highlighting, build/run, snippets). LSP in `tools/lsp/` for diagnostics with line-numbered errors (`line N: error: msg`). See `ide/README.md`.
 
 ## MVP Limitations
 
@@ -40,6 +41,7 @@ Before publishing (e.g. tagging `v0.1.0` or creating a GitHub Release):
 
 1. Build the compiler with no warnings: `make` (Unix) or `.\build.ps1` (Windows) in `c-compiler/`.
 2. Run the sanity test from project root: `./scripts/run_tests.sh` (Unix) or `.\scripts\run_tests.ps1` (Windows).
+   - Full test requires **clang** on PATH (compile + run hello_world). Without clang, the script falls back to parse+typecheck only.
 3. Optionally: compile and run a few more examples (e.g. `arithmetic.qs`, `parentheses.qs`) and run `qlangc --qasm -o bell.qasm examples/bell_pair.qs` to verify the quantum backend.
 
 ## Build and Run

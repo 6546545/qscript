@@ -1,0 +1,99 @@
+{
+  "name": "qscript",
+  "displayName": "QScript Language Support",
+  "description": "Syntax highlighting, build/run tasks, and language support for QScript",
+  "version": "0.1.0",
+  "publisher": "qscript",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "activationEvents": [
+    "onLanguage:qscript",
+    "workspaceContains:**/*.qs"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "qscript",
+        "aliases": ["QScript", "qscript"],
+        "extensions": [".qs"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qscript",
+        "scopeName": "source.qscript",
+        "path": "./syntaxes/qscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "qscript",
+        "path": "./snippets/qscript.code-snippets"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "qscript",
+        "required": ["file"],
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "QScript source file to compile"
+          },
+          "output": {
+            "type": "string",
+            "description": "Output binary path (default: out.exe or out)"
+          }
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "qscript.build",
+        "title": "QScript: Build"
+      },
+      {
+        "command": "qscript.run",
+        "title": "QScript: Run"
+      }
+    ],
+    "configuration": {
+      "title": "QScript",
+      "properties": {
+        "qscript.qlangcPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to qlangc compiler (leave empty to auto-detect from workspace c-compiler/)"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "qscript.build",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "editorLangId == qscript"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}

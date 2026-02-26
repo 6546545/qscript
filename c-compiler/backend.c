@@ -22,7 +22,7 @@ static const char *llvm_type_for(const char *ty) {
     if (!ty) return "void";
     if (strcmp(ty, "i32") == 0 || strcmp(ty, "bool") == 0) return "i32";
     if (strcmp(ty, "unit") == 0) return "void";
-    return "i8*";  /* string, qreg, etc. as opaque pointer for now */
+    return "ptr";   /* string, qreg, etc. (LLVM 15+ opaque pointers) */
 }
 
 static const char *llvm_icmp_for(const char *op) {
@@ -77,13 +77,13 @@ static void emit_i32_operand(FILE *out, const FunctionIr *fir, const IrValue *v,
     }
     if (is_param(fir, val)) {
         /* Params are stored in %name.addr; load from there */
-        fprintf(out, "  %%load.%lu = load i32, i32* %%%s.addr\n", (unsigned long)(*load_counter), val);
+        fprintf(out, "  %%load.%lu = load i32, ptr %%%s.addr\n", (unsigned long)(*load_counter), val);
         snprintf(buf, buf_size, "%%load.%lu", (unsigned long)(*load_counter));
         (*load_counter)++;
         return;
     }
     if (is_local(fir, val)) {
-        fprintf(out, "  %%load.%lu = load i32, i32* %%%s\n", (unsigned long)(*load_counter), val);
+        fprintf(out, "  %%load.%lu = load i32, ptr %%%s\n", (unsigned long)(*load_counter), val);
         snprintf(buf, buf_size, "%%load.%lu", (unsigned long)(*load_counter));
         (*load_counter)++;
         return;
@@ -126,9 +126,13 @@ static FILE *emit_out;
 
 static void emit_llvm_impl(const ModuleIr *module) {
     FILE *out = emit_out ? emit_out : stdout;
+#ifdef _WIN32
+    fprintf(out, "target triple = \"x86_64-pc-windows-gnu\"\n");
+#else
     fprintf(out, "target triple = \"x86_64-unknown-unknown\"\n");
+#endif
     fprintf(out, "target datalayout = \"e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128\"\n");
-    fprintf(out, "declare i32 @printf(i8*, ...)\n");
+    fprintf(out, "declare i32 @printf(ptr, ...)\n");
     fprintf(out, "@.str.fmt = private unnamed_addr constant [4 x i8] c\"%%s\\0A\\00\", align 1\n");
     fprintf(out, "@.str.fmt.int = private unnamed_addr constant [4 x i8] c\"%%d\\0A\\00\", align 1\n");
 
@@ -188,7 +192,7 @@ static void emit_llvm_impl(const ModuleIr *module) {
             if (j == 0 && fir->param_count > 0) {
                 for (size_t p = 0; p < fir->param_count; p++) {
                     if (fir->params[p].name)
-                        fprintf(out, "  %%%s.addr = alloca i32\n  store i32 %%%s, i32* %%%s.addr\n",
+                        fprintf(out, "  %%%s.addr = alloca i32\n  store i32 %%%s, ptr %%%s.addr\n",
                                 fir->params[p].name, fir->params[p].name, fir->params[p].name);
                 }
             }
@@ -234,9 +238,9 @@ static void emit_llvm_impl(const ModuleIr *module) {
                     emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
                     /* Params use .addr; locals use name directly */
                     if (is_param(fir, inst->callee))
-                        fprintf(out, "  store i32 %s, i32* %%%s.addr\n", val_buf, inst->callee);
+                        fprintf(out, "  store i32 %s, ptr %%%s.addr\n", val_buf, inst->callee);
                     else
-                        fprintf(out, "  store i32 %s, i32* %%%s\n", val_buf, inst->callee);
+                        fprintf(out, "  store i32 %s, ptr %%%s\n", val_buf, inst->callee);
                     continue;
                 }
                 if (inst->kind == IR_RET) {
@@ -266,15 +270,15 @@ static void emit_llvm_impl(const ModuleIr *module) {
                            && inst->arg_count == 1 && inst->args[0].kind == IR_VAL_STR) {
                     size_t idx = str_idx++;
                     size_t n = strlen(inst->args[0].value) + 1;
-                    fprintf(out, "  %%str.ptr = getelementptr inbounds ([%zu x i8], [%zu x i8]* @.str.%zu, i64 0, i64 0)\n", n, n, idx);
-                    fprintf(out, "  %%fmt.ptr = getelementptr inbounds ([4 x i8], [4 x i8]* @.str.fmt, i64 0, i64 0)\n");
-                    fprintf(out, "  %%1 = call i32 @printf(i8* %%fmt.ptr, i8* %%str.ptr)\n");
+                    fprintf(out, "  %%str.ptr = getelementptr inbounds [%zu x i8], ptr @.str.%zu, i64 0, i64 0\n", n, idx);
+                    fprintf(out, "  %%fmt.ptr = getelementptr inbounds [4 x i8], ptr @.str.fmt, i64 0, i64 0\n");
+                    fprintf(out, "  %%1 = call i32 @printf(ptr %%fmt.ptr, ptr %%str.ptr)\n");
                 } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print_int") == 0
                            && inst->arg_count == 1) {
                     char val_buf[64];
                     emit_i32_operand(out, fir, &inst->args[0], val_buf, sizeof(val_buf), &load_counter);
-                    fprintf(out, "  %%fmt.int.ptr = getelementptr inbounds ([4 x i8], [4 x i8]* @.str.fmt.int, i64 0, i64 0)\n");
-                    fprintf(out, "  %%2 = call i32 @printf(i8* %%fmt.int.ptr, i32 %s)\n", val_buf);
+                    fprintf(out, "  %%fmt.int.ptr = getelementptr inbounds [4 x i8], ptr @.str.fmt.int, i64 0, i64 0\n");
+                    fprintf(out, "  %%2 = call i32 @printf(ptr %%fmt.int.ptr, i32 %s)\n", val_buf);
                 } else if (inst->kind == IR_CALL && inst->callee && strcmp(inst->callee, "print") != 0
                            && strcmp(inst->callee, "print_int") != 0) {
                     int is_in_module = 0;
@@ -300,7 +304,7 @@ static void emit_llvm_impl(const ModuleIr *module) {
                             if (a > 0) fprintf(out, ", ");
                             if (inst->args[a].kind == IR_VAL_STR && inst->args[a].value) {
                                 size_t n = strlen(inst->args[a].value) + 1;
-                                fprintf(out, "i8* getelementptr inbounds ([%zu x i8], [%zu x i8]* @.str.%zu, i64 0, i64 0)", n, n, str_idx++);
+                                fprintf(out, "ptr getelementptr inbounds [%zu x i8], ptr @.str.%zu, i64 0, i64 0", n, str_idx++);
                             } else if (inst->args[a].kind == IR_VAL_INT) {
                                 char arg_buf[64];
                                 emit_i32_operand(out, fir, &inst->args[a], arg_buf, sizeof(arg_buf), &load_counter);

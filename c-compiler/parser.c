@@ -7,13 +7,23 @@
 #define ERR_MAX  128
 
 static char parse_last_error[ERR_MAX];
+static int parse_last_error_line = 1;
 
 const char *parse_get_last_error(void) {
     return parse_last_error;
 }
 
-static void set_error(const char *msg) {
+int parse_get_last_error_line(void) {
+    return parse_last_error_line;
+}
+
+static void set_error_at(const Token *tokens, size_t token_count, size_t idx, const char *msg) {
     (void)snprintf(parse_last_error, sizeof(parse_last_error), "%s", msg);
+    parse_last_error_line = 1;
+    if (idx < token_count && tokens[idx].line > 0)
+        parse_last_error_line = tokens[idx].line;
+    else if (token_count > 0 && tokens[token_count - 1].line > 0)
+        parse_last_error_line = tokens[token_count - 1].line;
 }
 
 static int peek(const Token *tokens, size_t token_count, size_t *i, TokenKind kind) {
@@ -66,7 +76,7 @@ static int parse_primary(const Token *tokens, size_t token_count, size_t *i, Exp
         if (!parse_expr(tokens, token_count, i, e)) return 0;
         if (!consume(tokens, token_count, i, TOK_RPAREN)) {
             ast_free_expr(e);
-            set_error("expected ')' after expression");
+            set_error_at(tokens, token_count, *i,"expected ')' after expression");
             return 0;
         }
         return 1;
@@ -290,7 +300,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_LET)) {
         (*i)++;
         if (*i >= token_count || tokens[*i].kind != TOK_IDENTIFIER || !tokens[*i].value) {
-            set_error("expected variable name after 'let'");
+            set_error_at(tokens, token_count, *i,"expected variable name after 'let'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -305,7 +315,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
             if (*i >= token_count || tokens[*i].kind != TOK_IDENTIFIER || !tokens[*i].value) {
                 free(s->let_name);
                 free(s);
-                set_error("expected type after ':'");
+                set_error_at(tokens, token_count, *i,"expected type after ':'");
                 return 0;
             }
             s->let_type = strdup(tokens[*i].value);
@@ -337,7 +347,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
             free(s->let_type);
             free(s->let_name);
             free(s);
-            set_error("expected '=' in let binding");
+            set_error_at(tokens, token_count, *i,"expected '=' in let binding");
             return 0;
         }
         (*i)++;
@@ -354,7 +364,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected ';' after let binding");
+            set_error_at(tokens, token_count, *i,"expected ';' after let binding");
             return 0;
         }
         *out_stmt = s;
@@ -364,7 +374,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_QUANTUM)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_LBRACE)) {
-            set_error("expected '{' after 'quantum'");
+            set_error_at(tokens, token_count, *i,"expected '{' after 'quantum'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -400,7 +410,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '}' to close quantum block");
+            set_error_at(tokens, token_count, *i,"expected '}' to close quantum block");
             return 0;
         }
         *out_stmt = s;
@@ -411,12 +421,12 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         (*i)++;
         Expr cond;
         if (!parse_expr(tokens, token_count, i, &cond)) {
-            set_error("expected condition after 'if'");
+            set_error_at(tokens, token_count, *i,"expected condition after 'if'");
             return 0;
         }
         if (!consume(tokens, token_count, i, TOK_LBRACE)) {
             ast_free_expr(&cond);
-            set_error("expected '{' after if condition");
+            set_error_at(tokens, token_count, *i,"expected '{' after if condition");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -457,7 +467,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '}' to close if body");
+            set_error_at(tokens, token_count, *i,"expected '}' to close if body");
             return 0;
         }
         if (peek(tokens, token_count, i, TOK_ELSE)) {
@@ -485,7 +495,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
                 if (!consume(tokens, token_count, i, TOK_LBRACE)) {
                     ast_free_statement(s);
                     free(s);
-                    set_error("expected '{' after 'else'");
+                    set_error_at(tokens, token_count, *i,"expected '{' after 'else'");
                     return 0;
                 }
                 size_t else_cap = 0;
@@ -516,7 +526,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
                 if (!consume(tokens, token_count, i, TOK_RBRACE)) {
                     ast_free_statement(s);
                     free(s);
-                    set_error("expected '}' to close else body");
+                    set_error_at(tokens, token_count, *i,"expected '}' to close else body");
                     return 0;
                 }
             }
@@ -528,7 +538,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_FOR)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_LPAREN)) {
-            set_error("expected '(' after 'for'");
+            set_error_at(tokens, token_count, *i,"expected '(' after 'for'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -559,7 +569,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected ';' after for condition");
+            set_error_at(tokens, token_count, *i,"expected ';' after for condition");
             return 0;
         }
         if (!peek(tokens, token_count, i, TOK_RPAREN)) {
@@ -587,13 +597,13 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RPAREN)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected ')' after for step");
+            set_error_at(tokens, token_count, *i,"expected ')' after for step");
             return 0;
         }
         if (!consume(tokens, token_count, i, TOK_LBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '{' before for body");
+            set_error_at(tokens, token_count, *i,"expected '{' before for body");
             return 0;
         }
         size_t cap = 0;
@@ -624,7 +634,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '}' to close for body");
+            set_error_at(tokens, token_count, *i,"expected '}' to close for body");
             return 0;
         }
         *out_stmt = s;
@@ -634,7 +644,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_WHILE)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_LPAREN)) {
-            set_error("expected '(' after 'while'");
+            set_error_at(tokens, token_count, *i,"expected '(' after 'while'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -646,19 +656,19 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
             ast_free_expr(s->init);
             free(s->init);
             free(s);
-            set_error("expected condition after 'while'");
+            set_error_at(tokens, token_count, *i,"expected condition after 'while'");
             return 0;
         }
         if (!consume(tokens, token_count, i, TOK_RPAREN)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected ')' after while condition");
+            set_error_at(tokens, token_count, *i,"expected ')' after while condition");
             return 0;
         }
         if (!consume(tokens, token_count, i, TOK_LBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '{' before while body");
+            set_error_at(tokens, token_count, *i,"expected '{' before while body");
             return 0;
         }
         s->body = NULL;
@@ -691,7 +701,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '}' to close while body");
+            set_error_at(tokens, token_count, *i,"expected '}' to close while body");
             return 0;
         }
         *out_stmt = s;
@@ -701,7 +711,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_LOOP)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_LBRACE)) {
-            set_error("expected '{' after 'loop'");
+            set_error_at(tokens, token_count, *i,"expected '{' after 'loop'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -737,7 +747,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
         if (!consume(tokens, token_count, i, TOK_RBRACE)) {
             ast_free_statement(s);
             free(s);
-            set_error("expected '}' to close loop body");
+            set_error_at(tokens, token_count, *i,"expected '}' to close loop body");
             return 0;
         }
         *out_stmt = s;
@@ -747,7 +757,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_BREAK)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
-            set_error("expected ';' after 'break'");
+            set_error_at(tokens, token_count, *i,"expected ';' after 'break'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -760,7 +770,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (peek(tokens, token_count, i, TOK_CONTINUE)) {
         (*i)++;
         if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
-            set_error("expected ';' after 'continue'");
+            set_error_at(tokens, token_count, *i,"expected ';' after 'continue'");
             return 0;
         }
         Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -783,14 +793,14 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
                 ast_free_expr(s->init);
                 free(s->init);
                 free(s);
-                set_error("expected expression or ';' after 'return'");
+                set_error_at(tokens, token_count, *i,"expected expression or ';' after 'return'");
                 return 0;
             }
         }
         if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
             if (s->init) ast_free_expr(s->init);
             free(s);
-            set_error("expected ';' after return");
+            set_error_at(tokens, token_count, *i,"expected ';' after return");
             return 0;
         }
         *out_stmt = s;
@@ -815,13 +825,13 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
                 free(s->init);
                 free(s->let_name);
                 free(s);
-                set_error("expected expression after '='");
+                set_error_at(tokens, token_count, *i,"expected expression after '='");
                 return 0;
             }
             if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
                 ast_free_statement(s);
                 free(s);
-                set_error("expected ';' after assignment");
+                set_error_at(tokens, token_count, *i,"expected ';' after assignment");
                 return 0;
             }
             *out_stmt = s;
@@ -834,7 +844,7 @@ static int parse_stmt(const Token *tokens, size_t token_count, size_t *i,
     if (!parse_expr(tokens, token_count, i, &ex)) return 0;
     if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
         ast_free_expr(&ex);
-        set_error("expected ';' after expression");
+        set_error_at(tokens, token_count, *i,"expected ';' after expression");
         return 0;
     }
     Statement *s = (Statement *)calloc(1, sizeof(Statement));
@@ -893,7 +903,7 @@ static int parse_type_alias(const Token *tokens, size_t token_count, size_t *i,
     if (!peek(tokens, token_count, i, TOK_TYPE)) return 0;
     (*i)++;
     if (*i >= token_count || tokens[*i].kind != TOK_IDENTIFIER || !tokens[*i].value) {
-        set_error("expected type alias name after 'type'");
+        set_error_at(tokens, token_count, *i,"expected type alias name after 'type'");
         return 0;
     }
     out->name = strdup(tokens[*i].value);
@@ -901,13 +911,13 @@ static int parse_type_alias(const Token *tokens, size_t token_count, size_t *i,
     (*i)++;
     if (*i >= token_count || tokens[*i].kind != TOK_OPERATOR || !tokens[*i].value || strcmp(tokens[*i].value, "=") != 0) {
         free(out->name);
-        set_error("expected '=' in type alias");
+        set_error_at(tokens, token_count, *i,"expected '=' in type alias");
         return 0;
     }
     (*i)++;
     if (*i >= token_count || tokens[*i].kind != TOK_IDENTIFIER || !tokens[*i].value) {
         free(out->name);
-        set_error("expected type after '='");
+        set_error_at(tokens, token_count, *i,"expected type after '='");
         return 0;
     }
     char buf[64];
@@ -935,7 +945,7 @@ static int parse_type_alias(const Token *tokens, size_t token_count, size_t *i,
     if (!consume(tokens, token_count, i, TOK_SEMICOLON)) {
         free(out->name);
         free(out->value);
-        set_error("expected ';' after type alias");
+        set_error_at(tokens, token_count, *i,"expected ';' after type alias");
         return 0;
     }
     return 1;
@@ -970,16 +980,16 @@ Program *parse(const Token *tokens, size_t token_count) {
 
         i++;
         if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER || !tokens[i].value) {
-            set_error("expected function name after 'fn'");
+            set_error_at(tokens, token_count, i,"expected function name after 'fn'");
             goto fail;
         }
         char *name = strdup(tokens[i].value);
-        if (!name) { set_error("out of memory"); goto fail; }
+        if (!name) { set_error_at(tokens, token_count, i,"out of memory"); goto fail; }
         i++;
 
         if (!consume(tokens, token_count, &i, TOK_LPAREN)) {
             free(name);
-            set_error("expected '(' after function name");
+            set_error_at(tokens, token_count, i,"expected '(' after function name");
             goto fail;
         }
         Param *params = NULL;
@@ -994,7 +1004,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("expected parameter name");
+                set_error_at(tokens, token_count, i,"expected parameter name");
                 goto fail;
             }
             char *pname = strdup(tokens[i].value);
@@ -1007,7 +1017,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("out of memory");
+                set_error_at(tokens, token_count, i,"out of memory");
                 goto fail;
             }
             i++;
@@ -1021,7 +1031,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("expected ':' after parameter name");
+                set_error_at(tokens, token_count, i,"expected ':' after parameter name");
                 goto fail;
             }
             if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER || !tokens[i].value) {
@@ -1034,7 +1044,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("expected parameter type");
+                set_error_at(tokens, token_count, i,"expected parameter type");
                 goto fail;
             }
             char *ptype = strdup(tokens[i].value);
@@ -1048,7 +1058,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("out of memory");
+                set_error_at(tokens, token_count, i,"out of memory");
                 goto fail;
             }
             i++;
@@ -1082,7 +1092,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                         free(params);
                     }
                     free(name);
-                    set_error("out of memory");
+                    set_error_at(tokens, token_count, i,"out of memory");
                     goto fail;
                 }
             }
@@ -1100,7 +1110,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                         free(params);
                     }
                     free(name);
-                    set_error("out of memory");
+                    set_error_at(tokens, token_count, i,"out of memory");
                     goto fail;
                 }
                 params = n;
@@ -1121,7 +1131,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("expected ')' after parameter list");
+            set_error_at(tokens, token_count, i,"expected ')' after parameter list");
             goto fail;
         }
         if (!consume(tokens, token_count, &i, TOK_ARROW)) {
@@ -1133,7 +1143,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("expected '->' return type");
+            set_error_at(tokens, token_count, i,"expected '->' return type");
             goto fail;
         }
         if (i >= token_count || tokens[i].kind != TOK_IDENTIFIER) {
@@ -1145,7 +1155,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("expected return type after '->'");
+            set_error_at(tokens, token_count, i,"expected return type after '->'");
             goto fail;
         }
         char *return_type = strdup(tokens[i].value);
@@ -1158,7 +1168,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("out of memory");
+            set_error_at(tokens, token_count, i,"out of memory");
             goto fail;
         }
         i++;
@@ -1191,7 +1201,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     free(params);
                 }
                 free(name);
-                set_error("out of memory");
+                set_error_at(tokens, token_count, i,"out of memory");
                 goto fail;
             }
         }
@@ -1206,7 +1216,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("expected '{' before function body");
+            set_error_at(tokens, token_count, i,"expected '{' before function body");
             goto fail;
         }
         i++;
@@ -1222,7 +1232,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                 free(params);
             }
             free(name);
-            set_error("failed to parse function body");
+            set_error_at(tokens, token_count, i,"failed to parse function body");
             goto fail;
         }
 
@@ -1243,7 +1253,7 @@ Program *parse(const Token *tokens, size_t token_count) {
                     for (size_t k = 0; k < body_count; k++) ast_free_statement(&body[k]);
                     free(body);
                 }
-                set_error("out of memory");
+                set_error_at(tokens, token_count, i,"out of memory");
                 goto fail;
             }
             list = n;
@@ -1259,7 +1269,7 @@ Program *parse(const Token *tokens, size_t token_count) {
     }
 
     Program *p = (Program *)malloc(sizeof(Program));
-    if (!p) { set_error("out of memory"); goto fail; }
+    if (!p) { set_error_at(tokens, token_count, i,"out of memory"); goto fail; }
     p->type_aliases = type_list;
     p->type_alias_count = type_count;
     p->functions = list;

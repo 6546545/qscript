@@ -40,6 +40,8 @@ typedef enum {
 typedef struct Token {
     TokenKind kind;
     char *value; /* owned; non-NULL only for IDENTIFIER, INTEGER_LITERAL, STRING_LITERAL, OPERATOR */
+    int line;    /* 1-based line number */
+    int col;     /* 1-based column number */
 } Token;
 
 /**

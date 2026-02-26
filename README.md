@@ -104,11 +104,23 @@ From project root, build and run the hello_world example:
 ./scripts/run_tests.sh
 ```
 
+### IDE (VS Code Extension)
+
+A basic IDE is available in `ide/vscode-extension/`:
+
+- Syntax highlighting, snippets, bracket matching
+- Build (`Ctrl+Shift+B`) and Run commands
+- Diagnostics via LSP (parse/type errors)
+
+See `ide/README.md` for setup. Requires VS Code and the QScript compiler.
+
 ### Repository Layout
 
 - `c-compiler/` – Compiler implementation (lexer, parser, AST, typechecker, IR, classical and quantum backends).
+- `ide/` – VS Code extension for QScript (syntax, build/run, LSP).
 - `docs/` – Specs, design docs, MVP status, language tour.
 - `examples/` – `hello_world.qs`, `bell_pair.qs`, `greet.qs`, `conditional.qs`, `arithmetic.qs`, `loop.qs`, `return_value.qs`, `assignment.qs`, and others.
 - `orchestration/` – Swarms workflows.
 - `scripts/` – `run_qasm.py` (QASM simulator), `run_tests.ps1` / `run_tests.sh` (build and sanity test).
+- `tools/lsp/` – QScript Language Server (diagnostics).
 

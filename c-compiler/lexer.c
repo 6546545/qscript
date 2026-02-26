@@ -81,6 +81,19 @@ static char *strndup(const char *s, size_t n) {
     return p;
 }
 
+static void token_position(const char *source, const char *pos, int *out_line, int *out_col) {
+    int line = 1;
+    const char *line_start = source;
+    for (const char *s = source; s < pos && *s; s++) {
+        if (*s == '\n') {
+            line++;
+            line_start = s + 1;
+        }
+    }
+    *out_line = line;
+    *out_col = (int)(pos - line_start) + 1;
+}
+
 int lex(const char *source, Token **out_tokens, size_t *out_count) {
     TokenBuf buf = { NULL, 0, 0 };
     const char *p = source;
@@ -95,7 +108,8 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
             size_t len = (size_t)(p - start);
             TokenKind kind = keyword_kind(start, len);
             char *value = (kind == TOK_IDENTIFIER) ? strndup(start, len) : NULL;
-            Token t = { kind, value };
+            Token t = { kind, value, 0, 0 };
+            token_position(source, start, &t.line, &t.col);
             if (buf_push(&buf, t) != 0) goto fail;
             continue;
         }
@@ -116,7 +130,8 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
                 (void)snprintf(dec, sizeof(dec), "%llu", num);
                 char *value = strdup(dec);
                 if (!value) goto fail;
-                Token t = { TOK_INTEGER_LITERAL, value };
+                Token t = { TOK_INTEGER_LITERAL, value, 0, 0 };
+                token_position(source, start, &t.line, &t.col);
                 if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             } else if (p[0] == '0' && (p[1] == 'b' || p[1] == 'B')) {
                 p += 2;
@@ -129,7 +144,8 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
                 (void)snprintf(dec, sizeof(dec), "%llu", num);
                 char *value = strdup(dec);
                 if (!value) goto fail;
-                Token t = { TOK_INTEGER_LITERAL, value };
+                Token t = { TOK_INTEGER_LITERAL, value, 0, 0 };
+                token_position(source, start, &t.line, &t.col);
                 if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             } else if (p[0] == '0' && (p[1] == 'o' || p[1] == 'O')) {
                 p += 2;
@@ -142,13 +158,15 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
                 (void)snprintf(dec, sizeof(dec), "%llu", num);
                 char *value = strdup(dec);
                 if (!value) goto fail;
-                Token t = { TOK_INTEGER_LITERAL, value };
+                Token t = { TOK_INTEGER_LITERAL, value, 0, 0 };
+                token_position(source, start, &t.line, &t.col);
                 if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             } else {
                 while (isdigit((unsigned char)*p)) p++;
                 char *value = strndup(start, (size_t)(p - start));
                 if (!value) goto fail;
-                Token t = { TOK_INTEGER_LITERAL, value };
+                Token t = { TOK_INTEGER_LITERAL, value, 0, 0 };
+                token_position(source, start, &t.line, &t.col);
                 if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             }
             continue;
@@ -187,43 +205,49 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
             value[len] = '\0';
             char *v = (char *)realloc(value, len + 1);
             if (v) value = v;
-            Token t = { TOK_STRING_LITERAL, value };
-            if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            {
+                const char *str_start = p - (ptrdiff_t)len - 2;
+                Token t = { TOK_STRING_LITERAL, value, 0, 0 };
+                token_position(source, str_start, &t.line, &t.col);
+                if (buf_push(&buf, t) != 0) { free(value); goto fail; }
+            }
             continue;
         }
 
         if (p[0] == '-' && p[1] == '>') {
-            Token t = { TOK_ARROW, NULL };
+            Token t = { TOK_ARROW, NULL, 0, 0 };
+            token_position(source, p, &t.line, &t.col);
             if (buf_push(&buf, t) != 0) goto fail;
             p += 2;
             continue;
         }
 
-        if (*p == '{') { Token t = { TOK_LBRACE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == '}') { Token t = { TOK_RBRACE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == '(') { Token t = { TOK_LPAREN, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == ')') { Token t = { TOK_RPAREN, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == '[') { Token t = { TOK_LBRACKET, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == ']') { Token t = { TOK_RBRACKET, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (p[0] == '<' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("<=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (p[0] == '>' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup(">=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (p[0] == '=' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("==", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (p[0] == '!' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("!=", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (p[0] == '!' && p[1] != '=') { Token t = { TOK_OPERATOR, strndup("!", 1) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p++; continue; }
-        if (p[0] == '&' && p[1] == '&') { Token t = { TOK_OPERATOR, strndup("&&", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (p[0] == '|' && p[1] == '|') { Token t = { TOK_OPERATOR, strndup("||", 2) }; if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
-        if (*p == '<') { Token t = { TOK_LANGLE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == '>') { Token t = { TOK_RANGLE, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == ':') { Token t = { TOK_COLON, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == ';') { Token t = { TOK_SEMICOLON, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
-        if (*p == ',') { Token t = { TOK_COMMA, NULL }; if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == '{') { Token t = { TOK_LBRACE, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == '}') { Token t = { TOK_RBRACE, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == '(') { Token t = { TOK_LPAREN, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == ')') { Token t = { TOK_RPAREN, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == '[') { Token t = { TOK_LBRACKET, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == ']') { Token t = { TOK_RBRACKET, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (p[0] == '<' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("<=", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '>' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup(">=", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '=' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("==", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '!' && p[1] == '=') { Token t = { TOK_OPERATOR, strndup("!=", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '!' && p[1] != '=') { Token t = { TOK_OPERATOR, strndup("!", 1), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p++; continue; }
+        if (p[0] == '&' && p[1] == '&') { Token t = { TOK_OPERATOR, strndup("&&", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (p[0] == '|' && p[1] == '|') { Token t = { TOK_OPERATOR, strndup("||", 2), 0, 0 }; token_position(source, p, &t.line, &t.col); if (!t.value || buf_push(&buf, t) != 0) { if (t.value) free(t.value); goto fail; } p += 2; continue; }
+        if (*p == '<') { Token t = { TOK_LANGLE, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == '>') { Token t = { TOK_RANGLE, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == ':') { Token t = { TOK_COLON, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == ';') { Token t = { TOK_SEMICOLON, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
+        if (*p == ',') { Token t = { TOK_COMMA, NULL, 0, 0 }; token_position(source, p, &t.line, &t.col); if (buf_push(&buf, t) != 0) goto fail; p++; continue; }
 
         if (is_operator_char(*p)) {
             const char *start = p;
             while (is_operator_char(*p)) p++;
             char *value = strndup(start, (size_t)(p - start));
             if (!value) goto fail;
-            Token t = { TOK_OPERATOR, value };
+            Token t = { TOK_OPERATOR, value, 0, 0 };
+            token_position(source, start, &t.line, &t.col);
             if (buf_push(&buf, t) != 0) { free(value); goto fail; }
             continue;
         }
@@ -232,7 +256,7 @@ int lex(const char *source, Token **out_tokens, size_t *out_count) {
     }
 
     {
-        Token t = { TOK_EOF, NULL };
+        Token t = { TOK_EOF, NULL, 0, 0 };
         if (buf_push(&buf, t) != 0) goto fail;
     }
 

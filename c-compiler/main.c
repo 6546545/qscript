@@ -127,14 +127,18 @@ int main(int argc, char **argv) {
     tokens = NULL;
     if (!ast) {
         const char *err = parse_get_last_error();
-        fprintf(stderr, "error: parse failed%s%s\n", err ? ": " : "", err ? err : "");
+        int line = parse_get_last_error_line();
+        if (line > 0 && err)
+            fprintf(stderr, "line %d: error: %s\n", line, err);
+        else
+            fprintf(stderr, "error: parse failed%s%s\n", err ? ": " : "", err ? err : "");
         free(buffer);
         return 1;
     }
 
     if (typecheck(ast) != 0) {
         const char *err = typecheck_get_last_error();
-        fprintf(stderr, "error: type check failed%s%s\n", err ? ": " : "", err ? err : "");
+        fprintf(stderr, "line 0: error: %s\n", err ? err : "type check failed");
         ast_free(ast);
         free(buffer);
         return 1;
@@ -193,7 +197,8 @@ int main(int argc, char **argv) {
         {
             char cmd[512];
 #ifdef _WIN32
-            snprintf(cmd, sizeof(cmd), "clang -x ir .qlangc_tmp.ll -o \"%s\" 2>&1", out_path);
+            /* Use GNU target when MinGW is available; otherwise MSVC (needs VS) */
+            snprintf(cmd, sizeof(cmd), "clang -target x86_64-pc-windows-gnu -x ir .qlangc_tmp.ll -o \"%s\" 2>&1", out_path);
 #else
             snprintf(cmd, sizeof(cmd), "clang -x ir .qlangc_tmp.ll -o \"%s\" 2>&1", out_path);
 #endif
